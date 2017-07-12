@@ -1302,7 +1302,11 @@ compute_nth_protocol_set(int n, int n_voters, const smartlist_t *votes)
       smartlist_add(proto_votes, (void*)v);
   } SMARTLIST_FOREACH_END(ns);
 
-  char *protocols = protover_compute_vote(proto_votes, threshold);
+  // copy data from rust macro
+  rust_str_t r_s = protover_compute_vote(proto_votes, threshold);
+  const char *s = rust_str_get(r_s);
+  char *protocols = tor_strdup(s);
+  rust_str_free(r_s);
   smartlist_free(proto_votes);
 
   char *result = NULL;

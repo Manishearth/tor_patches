@@ -2558,6 +2558,8 @@ networkstatus_check_required_protocols(const networkstatus_t *ns,
     recommended = ns->recommended_relay_protocols;
   }
 
+  // TODO would it be possible to free a referance to a RustString, rather than
+  // having to pass the RustString itself?
   if (!protover_all_supported(required, &missing)) {
     tor_asprintf(warning_out, "At least one protocol listed as required in "
                  "the consensus is not supported by this version of Tor. "

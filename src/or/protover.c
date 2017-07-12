@@ -27,6 +27,41 @@
 #include "protover.h"
 #include "routerparse.h"
 
+/** The protocols from protover_get_supported_protocols(), as parsed into a
+ * list of proto_entry_t values. Access this via
+ * get_supported_protocol_list. */
+static smartlist_t *supported_protocol_list = NULL;
+
+/**
+ * Release all storage held by static fields in protover.c
+ */
+void
+protover_free_all(void)
+{
+  if (supported_protocol_list) {
+    smartlist_t *entries = supported_protocol_list;
+    SMARTLIST_FOREACH(entries, proto_entry_t *, ent, proto_entry_free(ent));
+    smartlist_free(entries);
+    supported_protocol_list = NULL;
+  }
+}
+
+
+/**
+ * Release all space held by a single proto_entry_t structure
+ */
+STATIC void
+proto_entry_free(proto_entry_t *entry)
+{
+  if (!entry)
+    return;
+  tor_free(entry->name);
+  SMARTLIST_FOREACH(entry->ranges, proto_range_t *, r, tor_free(r));
+  smartlist_free(entry->ranges);
+  tor_free(entry);
+}
+
+#ifndef HAVE_RUST
 static const smartlist_t *get_supported_protocol_list(void);
 static int protocol_list_contains(const smartlist_t *protos,
                                   protocol_type_t pr, uint32_t ver);
@@ -90,164 +125,6 @@ str_to_protocol_type(const char *s, protocol_type_t *pr_out)
 }
 
 /**
- * Release all space held by a single proto_entry_t structure
- */
-STATIC void
-proto_entry_free(proto_entry_t *entry)
-{
-  if (!entry)
-    return;
-  tor_free(entry->name);
-  SMARTLIST_FOREACH(entry->ranges, proto_range_t *, r, tor_free(r));
-  smartlist_free(entry->ranges);
-  tor_free(entry);
-}
-
-/**
- * Given a string <b>s</b> and optional end-of-string pointer
- * <b>end_of_range</b>, parse the protocol range and store it in
- * <b>low_out</b> and <b>high_out</b>.  A protocol range has the format U, or
- * U-U, where U is an unsigned 32-bit integer.
- */
-static int
-parse_version_range(const char *s, const char *end_of_range,
-                    uint32_t *low_out, uint32_t *high_out)
-{
-  uint32_t low, high;
-  char *next = NULL;
-  int ok;
-
-  tor_assert(high_out);
-  tor_assert(low_out);
-
-  if (BUG(!end_of_range))
-    end_of_range = s + strlen(s); // LCOV_EXCL_LINE
-
-  /* Note that this wouldn't be safe if we didn't know that eventually,
-   * we'd hit a NUL */
-  low = (uint32_t) tor_parse_ulong(s, 10, 0, UINT32_MAX, &ok, &next);
-  if (!ok)
-    goto error;
-  if (next > end_of_range)
-    goto error;
-  if (next == end_of_range) {
-    high = low;
-    goto done;
-  }
-
-  if (*next != '-')
-    goto error;
-  s = next+1;
-  /* ibid */
-  high = (uint32_t) tor_parse_ulong(s, 10, 0, UINT32_MAX, &ok, &next);
-  if (!ok)
-    goto error;
-  if (next != end_of_range)
-    goto error;
-
- done:
-  *high_out = high;
-  *low_out = low;
-  return 0;
-
- error:
-  return -1;
-}
-
-/** Parse a single protocol entry from <b>s</b> up to an optional
- * <b>end_of_entry</b> pointer, and return that protocol entry. Return NULL
- * on error.
- *
- * A protocol entry has a keyword, an = sign, and zero or more ranges. */
-static proto_entry_t *
-parse_single_entry(const char *s, const char *end_of_entry)
-{
-  proto_entry_t *out = tor_malloc_zero(sizeof(proto_entry_t));
-  const char *equals;
-
-  out->ranges = smartlist_new();
-
-  if (BUG (!end_of_entry))
-    end_of_entry = s + strlen(s); // LCOV_EXCL_LINE
-
-  /* There must be an =. */
-  equals = memchr(s, '=', end_of_entry - s);
-  if (!equals)
-    goto error;
-
-  /* The name must be nonempty */
-  if (equals == s)
-    goto error;
-
-  out->name = tor_strndup(s, equals-s);
-
-  tor_assert(equals < end_of_entry);
-
-  s = equals + 1;
-  while (s < end_of_entry) {
-    const char *comma = memchr(s, ',', end_of_entry-s);
-    proto_range_t *range = tor_malloc_zero(sizeof(proto_range_t));
-    if (! comma)
-      comma = end_of_entry;
-
-    smartlist_add(out->ranges, range);
-    if (parse_version_range(s, comma, &range->low, &range->high) < 0) {
-      goto error;
-    }
-
-    if (range->low > range->high) {
-      goto error;
-    }
-
-    s = comma;
-    while (*s == ',' && s < end_of_entry)
-      ++s;
-  }
-
-  return out;
-
- error:
-  proto_entry_free(out);
-  return NULL;
-}
-
-/**
- * Parse the protocol list from <b>s</b> and return it as a smartlist of
- * proto_entry_t
- */
-STATIC smartlist_t *
-parse_protocol_list(const char *s)
-{
-  smartlist_t *entries = smartlist_new();
-
-  while (*s) {
-    /* Find the next space or the NUL. */
-    const char *end_of_entry = strchr(s, ' ');
-    proto_entry_t *entry;
-    if (!end_of_entry)
-      end_of_entry = s + strlen(s);
-
-    entry = parse_single_entry(s, end_of_entry);
-
-    if (! entry)
-      goto error;
-
-    smartlist_add(entries, entry);
-
-    s = end_of_entry;
-    while (*s == ' ')
-      ++s;
-  }
-
-  return entries;
-
- error:
-  SMARTLIST_FOREACH(entries, proto_entry_t *, ent, proto_entry_free(ent));
-  smartlist_free(entries);
-  return NULL;
-}
-
-/**
  * Given a protocol type and version number, return true iff we know
  * how to speak that protocol.
  */
@@ -298,11 +175,6 @@ protover_get_supported_protocols(void)
     "Relay=1-2";
 }
 
-/** The protocols from protover_get_supported_protocols(), as parsed into a
- * list of proto_entry_t values. Access this via
- * get_supported_protocol_list. */
-static smartlist_t *supported_protocol_list = NULL;
-
 /** Return a pointer to a smartlist of proto_entry_t for the protocols
  * we support. */
 static const smartlist_t *
@@ -313,54 +185,6 @@ get_supported_protocol_list(void)
       parse_protocol_list(protover_get_supported_protocols());
   }
   return supported_protocol_list;
-}
-
-/**
- * Given a protocol entry, encode it at the end of the smartlist <b>chunks</b>
- * as one or more newly allocated strings.
- */
-static void
-proto_entry_encode_into(smartlist_t *chunks, const proto_entry_t *entry)
-{
-  smartlist_add_asprintf(chunks, "%s=", entry->name);
-
-  SMARTLIST_FOREACH_BEGIN(entry->ranges, proto_range_t *, range) {
-    const char *comma = "";
-    if (range_sl_idx != 0)
-      comma = ",";
-
-    if (range->low == range->high) {
-      smartlist_add_asprintf(chunks, "%s%lu",
-                             comma, (unsigned long)range->low);
-    } else {
-      smartlist_add_asprintf(chunks, "%s%lu-%lu",
-                             comma, (unsigned long)range->low,
-                             (unsigned long)range->high);
-    }
-  } SMARTLIST_FOREACH_END(range);
-}
-
-/** Given a list of space-separated proto_entry_t items,
- * encode it into a newly allocated space-separated string. */
-STATIC char *
-encode_protocol_list(const smartlist_t *sl)
-{
-  const char *separator = "";
-  smartlist_t *chunks = smartlist_new();
-  SMARTLIST_FOREACH_BEGIN(sl, const proto_entry_t *, ent) {
-    smartlist_add_strdup(chunks, separator);
-
-    proto_entry_encode_into(chunks, ent);
-
-    separator = " ";
-  } SMARTLIST_FOREACH_END(ent);
-
-  char *result = smartlist_join_strings(chunks, "", 0, NULL);
-
-  SMARTLIST_FOREACH(chunks, char *, cp, tor_free(cp));
-  smartlist_free(chunks);
-
-  return result;
 }
 
 /* We treat any protocol list with more than this many subprotocols in it
@@ -691,7 +515,7 @@ protocol_list_contains(const smartlist_t *protos,
  * Note that this is only used to infer protocols for Tor versions that
  * can't declare their own.
  **/
-const char *
+rust_str_t
 protover_compute_for_old_tor(const char *version)
 {
   if (tor_version_as_new_as(version,
@@ -720,18 +544,205 @@ protover_compute_for_old_tor(const char *version)
     return "";
   }
 }
+#endif
+
+/** Some tests in /tests/test_protover.c use the functions defined below as
+ * test helpers. These are defined in the case that tests are being run, or if
+ * tor is compiled without Rust support.
+ * */
+#if defined(TOR_UNIT_TESTS) || !defined(HAVE_RUST)
 
 /**
- * Release all storage held by static fields in protover.c
+ * Given a string <b>s</b> and optional end-of-string pointer
+ * <b>end_of_range</b>, parse the protocol range and store it in
+ * <b>low_out</b> and <b>high_out</b>.  A protocol range has the format U, or
+ * U-U, where U is an unsigned 32-bit integer.
  */
-void
-protover_free_all(void)
+static int
+parse_version_range(const char *s, const char *end_of_range,
+                    uint32_t *low_out, uint32_t *high_out)
 {
-  if (supported_protocol_list) {
-    smartlist_t *entries = supported_protocol_list;
-    SMARTLIST_FOREACH(entries, proto_entry_t *, ent, proto_entry_free(ent));
-    smartlist_free(entries);
-    supported_protocol_list = NULL;
+  uint32_t low, high;
+  char *next = NULL;
+  int ok;
+
+  tor_assert(high_out);
+  tor_assert(low_out);
+
+  if (BUG(!end_of_range))
+    end_of_range = s + strlen(s); // LCOV_EXCL_LINE
+
+  /* Note that this wouldn't be safe if we didn't know that eventually,
+   * we'd hit a NUL */
+  low = (uint32_t) tor_parse_ulong(s, 10, 0, UINT32_MAX, &ok, &next);
+  if (!ok)
+    goto error;
+  if (next > end_of_range)
+    goto error;
+  if (next == end_of_range) {
+    high = low;
+    goto done;
   }
+
+  if (*next != '-')
+    goto error;
+  s = next+1;
+  /* ibid */
+  high = (uint32_t) tor_parse_ulong(s, 10, 0, UINT32_MAX, &ok, &next);
+  if (!ok)
+    goto error;
+  if (next != end_of_range)
+    goto error;
+
+ done:
+  *high_out = high;
+  *low_out = low;
+  return 0;
+
+ error:
+  return -1;
 }
 
+/** Given a list of space-separated proto_entry_t items,
+ * encode it into a newly allocated space-separated string. */
+STATIC char *
+encode_protocol_list(const smartlist_t *sl)
+{
+  const char *separator = "";
+  smartlist_t *chunks = smartlist_new();
+  SMARTLIST_FOREACH_BEGIN(sl, const proto_entry_t *, ent) {
+    smartlist_add_strdup(chunks, separator);
+
+    proto_entry_encode_into(chunks, ent);
+
+    separator = " ";
+  } SMARTLIST_FOREACH_END(ent);
+
+  char *result = smartlist_join_strings(chunks, "", 0, NULL);
+
+  SMARTLIST_FOREACH(chunks, char *, cp, tor_free(cp));
+  smartlist_free(chunks);
+
+  return result;
+}
+
+/** Parse a single protocol entry from <b>s</b> up to an optional
+ * <b>end_of_entry</b> pointer, and return that protocol entry. Return NULL
+ * on error.
+ *
+ * A protocol entry has a keyword, an = sign, and zero or more ranges. */
+static proto_entry_t *
+parse_single_entry(const char *s, const char *end_of_entry)
+{
+  proto_entry_t *out = tor_malloc_zero(sizeof(proto_entry_t));
+  const char *equals;
+
+  out->ranges = smartlist_new();
+
+  if (BUG (!end_of_entry))
+    end_of_entry = s + strlen(s); // LCOV_EXCL_LINE
+
+  /* There must be an =. */
+  equals = memchr(s, '=', end_of_entry - s);
+  if (!equals)
+    goto error;
+
+  /* The name must be nonempty */
+  if (equals == s)
+    goto error;
+
+  out->name = tor_strndup(s, equals-s);
+
+  tor_assert(equals < end_of_entry);
+
+  s = equals + 1;
+  while (s < end_of_entry) {
+    const char *comma = memchr(s, ',', end_of_entry-s);
+    proto_range_t *range = tor_malloc_zero(sizeof(proto_range_t));
+    if (! comma)
+      comma = end_of_entry;
+
+    smartlist_add(out->ranges, range);
+    if (parse_version_range(s, comma, &range->low, &range->high) < 0) {
+      goto error;
+    }
+
+    if (range->low > range->high) {
+      goto error;
+    }
+
+    s = comma;
+    while (*s == ',' && s < end_of_entry)
+      ++s;
+  }
+
+  return out;
+
+ error:
+  proto_entry_free(out);
+  return NULL;
+}
+
+/**
+ * Parse the protocol list from <b>s</b> and return it as a smartlist of
+ * proto_entry_t
+ */
+STATIC smartlist_t *
+parse_protocol_list(const char *s)
+{
+  smartlist_t *entries = smartlist_new();
+
+  while (*s) {
+    /* Find the next space or the NUL. */
+    const char *end_of_entry = strchr(s, ' ');
+    proto_entry_t *entry;
+    if (!end_of_entry)
+      end_of_entry = s + strlen(s);
+
+    entry = parse_single_entry(s, end_of_entry);
+
+    if (! entry)
+      goto error;
+
+    smartlist_add(entries, entry);
+
+    s = end_of_entry;
+    while (*s == ' ')
+      ++s;
+  }
+
+  return entries;
+
+ error:
+  SMARTLIST_FOREACH(entries, proto_entry_t *, ent, proto_entry_free(ent));
+  smartlist_free(entries);
+  return NULL;
+}
+
+/**
+ * Given a protocol entry, encode it at the end of the smartlist <b>chunks</b>
+ * as one or more newly allocated strings.
+ */
+STATIC void
+proto_entry_encode_into(smartlist_t *chunks, const proto_entry_t *entry)
+{
+  smartlist_add_asprintf(chunks, "%s=", entry->name);
+
+  SMARTLIST_FOREACH_BEGIN(entry->ranges, proto_range_t *, range) {
+    const char *comma = "";
+    if (range_sl_idx != 0)
+      comma = ",";
+
+    if (range->low == range->high) {
+      smartlist_add_asprintf(chunks, "%s%lu",
+                             comma, (unsigned long)range->low);
+    } else {
+      smartlist_add_asprintf(chunks, "%s%lu-%lu",
+                             comma, (unsigned long)range->low,
+                             (unsigned long)range->high);
+    }
+  } SMARTLIST_FOREACH_END(range);
+}
+
+
+#endif
