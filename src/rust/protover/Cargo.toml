@@ -12,6 +12,9 @@ path = "../smartlist"
 [dependencies.external]
 path = "../external"
 
+[dependencies.tor_util]
+path = "../tor_util"
+
 [lib]
 name = "protover"
 path = "lib.rs"

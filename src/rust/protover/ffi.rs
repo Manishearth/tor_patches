@@ -1,5 +1,6 @@
 extern crate libc;
 extern crate smartlist;
+extern crate tor_util;
 
 use self::smartlist::*;
 use std::fmt;
@@ -93,28 +94,28 @@ pub unsafe extern "C" fn protocol_list_supports_protocol(
     return if is_supported { 1 } else { 0 };
 }
 
-// TODO this should also return a rust string
 #[no_mangle]
-pub unsafe extern "C" fn protover_get_supported_protocols() -> *mut c_char {
+pub unsafe extern "C" fn protover_get_supported_protocols()
+    -> tor_util::RustString
+{
     let supported = super::get_supported_protocols();
-
-    CString::new(supported).unwrap().into_raw()
+    tor_util::RustString::from(CString::new(supported).unwrap())
 }
 
-// TODO this should return a rust string
 #[no_mangle]
 pub unsafe extern "C" fn protover_compute_vote(
     list: *mut Smartlist,
     threshold: c_int,
-) -> *mut c_char {
+) -> tor_util::RustString {
     if list.is_null() {
-        return CString::new("").unwrap().into_raw();
+        return tor_util::RustString::from(CString::new("").unwrap());
     }
 
     let data = get_list_of_strings(&*list); // TODO verify this is ok
     let vote = super::compute_vote(data, threshold);
 
-    CString::new(vote).unwrap().into_raw()
+    tor_util::RustString::from(CString::new(vote).unwrap())
+
 }
 
 #[no_mangle]

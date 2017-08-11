@@ -10,6 +10,7 @@
 #define TOR_PROTOVER_H
 
 #include "container.h"
+#include "compat_rust.h"
 
 /** The first version of Tor that included "proto" entries in its
  * descriptors.  Authorities should use this to decide whether to
@@ -38,7 +39,7 @@ typedef enum protocol_type_t {
 
 int protover_all_supported(const char *s, char **missing);
 int protover_is_supported_here(protocol_type_t pr, uint32_t ver);
-const char *protover_get_supported_protocols(void);
+rust_str_t protover_get_supported_protocols(void);
 
 char *protover_compute_vote(const smartlist_t *list_of_proto_strings,
                             int threshold);

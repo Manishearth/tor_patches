@@ -10,6 +10,7 @@
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "circuituse.h"
+#include "compat_rust.h"
 #include "config.h"
 #include "connection.h"
 #include "control.h"
@@ -2240,7 +2241,11 @@ router_build_fresh_descriptor(routerinfo_t **r, extrainfo_t **e)
   get_platform_str(platform, sizeof(platform));
   ri->platform = tor_strdup(platform);
 
-  ri->protocol_list = tor_strdup(protover_get_supported_protocols());
+  // straight copy, so we can free the string afterward
+  rust_str_t r_s = protover_get_supported_protocols();
+  const char *s = rust_str_get(r_s);
+  ri->protocol_list = tor_strdup(s);
+  rust_str_free(r_s);
 
   /* compute ri->bandwidthrate as the min of various options */
   ri->bandwidthrate = get_effective_bwrate(options);
