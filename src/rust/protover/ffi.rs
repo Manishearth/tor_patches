@@ -65,7 +65,10 @@ pub unsafe extern "C" fn protover_all_supported(
     let (status, unsupported) = super::all_supported(r_str);
 
     if status == false {
-        let c_unsupported = CString::new(unsupported).unwrap();
+        let c_unsupported = match CString::new(unsupported) {
+            Ok(n) => n,
+            Err(_) => panic!("invalid protocol string!"),
+        };
         *missing_out = c_unsupported.into_raw();
         return 0;
     }
@@ -99,7 +102,11 @@ pub unsafe extern "C" fn protover_get_supported_protocols()
     -> tor_util::RustString
 {
     let supported = super::get_supported_protocols();
-    tor_util::RustString::from(CString::new(supported).unwrap())
+    let c_supported = match CString::new(supported) {
+        Ok(n) => n,
+        Err(_) => panic!("invalid supported protocol string"),
+    };
+    tor_util::RustString::from(c_supported)
 }
 
 #[no_mangle]
@@ -108,14 +115,18 @@ pub unsafe extern "C" fn protover_compute_vote(
     threshold: c_int,
 ) -> tor_util::RustString {
     if list.is_null() {
+        // Not handling errors in unwrapping as this is an empty string
         return tor_util::RustString::from(CString::new("").unwrap());
     }
 
     let data = get_list_of_strings(&*list); // TODO verify this is ok
     let vote = super::compute_vote(data, threshold);
 
-    tor_util::RustString::from(CString::new(vote).unwrap())
-
+    let c_vote = match CString::new(vote) {
+        Ok(n) => n,
+        Err(_) => panic!("invalid strings in computed vote"),
+    };
+    tor_util::RustString::from(c_vote)
 }
 
 #[no_mangle]
@@ -136,11 +147,15 @@ pub unsafe extern "C" fn protover_compute_for_old_tor(
     let c_str = CStr::from_ptr(vers);
     let r_str = match c_str.to_str() {
         Ok(n) => n,
+        // Not handling errors in unwrapping as this is an empty string
         Err(_) => return CString::new("").unwrap().into_raw(),
     };
 
     let supported = super::compute_for_old_tor(String::from(r_str));
 
-    let c_supported = CString::new(supported).unwrap();
+    let c_supported = match CString::new(supported) {
+        Ok(n) => n,
+        Err(_) => panic!("invalid strings in computed vote for old tor"),
+    };
     c_supported.into_raw()
 }
