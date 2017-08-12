@@ -20,7 +20,7 @@
 
 extern crate external;
 
-use std::str;
+use std::str::FromStr;
 use std::fmt;
 use std::collections::HashMap;
 
@@ -51,7 +51,7 @@ impl fmt::Display for Proto {
     }
 }
 
-impl std::str::FromStr for Proto {
+impl FromStr for Proto {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
