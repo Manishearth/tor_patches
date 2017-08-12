@@ -91,11 +91,8 @@ fn tor_supported() -> HashMap<Proto, Vec<i32>> {
 /// Two formats can be used to specify subprotocols.
 /// "Cons=1-3" indicates that versions 1, 2, and 3 are supported, while
 /// "Cons=1,3" indicates that versions 1 and 3 are supported.
-fn get_supported_protocols() -> String {
-    String::from("Cons=1-2 ") + "Desc=1-2 " + "DirCache=1-2 " +
-        "HSDir=1-2 " + "HSIntro=3-4 " +
-        "HSRend=1-2 " + "Link=1-4 " + "LinkAuth=1,3 " + "Microdesc=1-2 " +
-        "Relay=1-2"
+fn get_supported_protocols() -> &'static str {
+    "Cons=1-2 Desc=1-2 DirCache=1-2 HSDir=1-2 HSIntro=3-4 HSRend=1-2 Link=1-4 LinkAuth=1,3 Microdesc=1-2 Relay=1-2"
 }
 
 /// Returns versions supported by the subprotocol.
