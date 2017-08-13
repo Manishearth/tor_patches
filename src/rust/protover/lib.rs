@@ -73,7 +73,7 @@ impl FromStr for Proto {
 
 /// Translates supported tor versions from  a string into a hashmap, which is
 /// useful when looking up a specific subprotocol.
-fn tor_supported() -> HashMap<Proto, Vec<i32>> {
+fn tor_supported() -> HashMap<Proto, Vec<u32>> {
     let mut tor_supported = HashMap::new();
 
     let str_supported = get_supported_protocols();
@@ -97,7 +97,7 @@ fn get_supported_protocols() -> &'static str {
 
 /// Returns versions supported by the subprotocol.
 /// A protocol entry has a keyword, an "=" sign, and one or more version numbers
-fn get_versions(list: &str) -> Vec<i32> {
+fn get_versions(list: &str) -> Vec<u32> {
     if list.is_empty() {
         return Vec::new();
     }
@@ -105,12 +105,12 @@ fn get_versions(list: &str) -> Vec<i32> {
     let mut all_supported = list.split(",")
         .filter(|&x| x.contains("-"))
         .flat_map(|x| expand(x))
-        .collect::<Vec<i32>>();
+        .collect::<Vec<u32>>();
 
     let loose = list.split(",")
         .filter(|&x| !x.contains("-"))
-        .map(|x| x.parse::<i32>().unwrap())
-        .collect::<Vec<i32>>();
+        .map(|x| x.parse::<u32>().unwrap())
+        .collect::<Vec<u32>>();
 
     all_supported.extend(loose.iter().cloned());
     all_supported.sort();
@@ -119,7 +119,7 @@ fn get_versions(list: &str) -> Vec<i32> {
 
 fn get_proto_and_vers(
     str_p: &str,
-) -> (Result<Proto, &'static str>, Result<Vec<i32>, &'static str>) {
+) -> (Result<Proto, &'static str>, Result<Vec<u32>, &'static str>) {
     let mut parts: Vec<&str> = str_p.split("=").collect();
 
     let vers: &str = match parts.pop() {
@@ -215,30 +215,30 @@ fn strip_protocol(str_p: &str) -> &str {
 /// let is_supported = list_supports_protocol("Link=3-4 Cons=1", Proto::Cons,1);
 /// assert_eq!(true, is_supported)
 /// ```
-pub fn list_supports_protocol(list: &str, proto: Proto, vers: i32) -> bool {
+pub fn list_supports_protocol(list: &str, proto: Proto, vers: u32) -> bool {
     list.split_whitespace()
         .filter(|&x| is_for(&proto, x))
         .map(strip_protocol)
         .flat_map(|x| get_versions(x))
-        .collect::<Vec<i32>>()
+        .collect::<Vec<u32>>()
         .contains(&vers)
 }
 
 /// Takes a protocol range and expands it to all numbers within that range.
 /// For example, 1-3 expands to 1,2,3
-fn expand(range: &str) -> Vec<i32> {
+fn expand(range: &str) -> Vec<u32> {
     if range.is_empty() {
         return Vec::new();
     }
 
     let parts = range.split("-").collect::<Vec<&str>>();
 
-    let low = parts[0].parse::<i32>().unwrap();
+    let low = parts[0].parse::<u32>().unwrap();
     if parts.len() == 1 {
         return vec![low];
     }
 
-    let high = parts[1].parse::<i32>().unwrap();
+    let high = parts[1].parse::<u32>().unwrap();
     (low..high + 1).collect()
 }
 
@@ -247,7 +247,7 @@ fn expand(range: &str) -> Vec<i32> {
 /// For example, if given vec![1, 2, 3, 5], find_range will return true,
 /// as there is a continuous range, and 3, which is the last number in the
 /// continuous range.
-fn find_range(list: Vec<i32>) -> (bool, i32) {
+fn find_range(list: Vec<u32>) -> (bool, u32) {
     if list.len() == 0 {
         return (false, 0);
     }
@@ -271,7 +271,7 @@ fn find_range(list: Vec<i32>) -> (bool, i32) {
     (has_range, current)
 }
 
-fn contract(list: &Vec<i32>, threshold: i32) -> String {
+fn contract(list: &Vec<u32>, threshold: i32) -> String {
     let mut supported = list.clone();
 
     let borrowed = supported.clone();
@@ -334,7 +334,7 @@ pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
         .flat_map(|ref k| k.split_whitespace().collect::<Vec<&str>>())
         .collect::<Vec<&str>>();
 
-    let mut uniques: HashMap<String, Vec<i32>> = HashMap::new();
+    let mut uniques: HashMap<String, Vec<u32>> = HashMap::new();
 
     for x in unified {
         let mut parts: Vec<&str> = x.split("=").collect();
@@ -392,7 +392,7 @@ pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
 /// let is_supported = is_supported_here(Proto::Link, 1);
 /// assert_eq!(true, is_supported);
 /// ```
-pub fn is_supported_here(proto: Proto, vers: i32) -> bool {
+pub fn is_supported_here(proto: Proto, vers: u32) -> bool {
     tor_supported()[&proto].contains(&vers)
 }
 
@@ -434,7 +434,7 @@ mod test {
         use super::get_versions;
 
         // TODO how to handle non-integer characters?
-        assert_eq!(Vec::<i32>::new(), get_versions(""));
+        assert_eq!(Vec::<u32>::new(), get_versions(""));
         assert_eq!(vec![1], get_versions("1"));
         assert_eq!(vec![1, 2], get_versions("1,2"));
         assert_eq!(vec![1, 2, 3], get_versions("1,2,3"));
@@ -498,7 +498,7 @@ mod test {
     fn test_expand() {
         use super::expand;
 
-        assert_eq!(Vec::<i32>::new(), expand(""));
+        assert_eq!(Vec::<u32>::new(), expand(""));
         assert_eq!(vec![1], expand("1"));
         assert_eq!(vec![1, 2], expand("1-2"));
         assert_eq!(vec![1, 2, 3, 4], expand("1-4"));
