@@ -289,7 +289,11 @@ fn contract(list: &Vec<i32>, threshold: i32) -> String {
         let current = supported.remove(0);
 
         if has_range {
-            final_output.push(current.to_string() + "-" + &end.to_string());
+            final_output.push(format!(
+                "{}-{}",
+                current.to_string(),
+                &end.to_string(),
+            ));
             supported.retain(|&x| x > end);
         } else {
             final_output.push(current.to_string());
@@ -367,7 +371,7 @@ pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
     for k in sorted_keys {
         let meets_threshold = &contract(&uniques[k], threshold);
         if !meets_threshold.is_empty() {
-            let output = k.clone() + "=" + meets_threshold;
+            let output = format!("{}={}", k.clone(), meets_threshold);
             final_output.push(output);
         }
     }
