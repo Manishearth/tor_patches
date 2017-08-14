@@ -191,17 +191,30 @@ pub fn all_supported(protocols: &str) -> (bool, String) {
 /// accepts a subprotocol and a subprotocol entry, returns a boolean indicating
 /// whether the subprotocol entry corresponds to that subprotocol
 fn is_for(proto: &Proto, sub: &str) -> bool {
-    let parts = sub.split("=").collect::<Vec<&str>>();
-    match parts[0].parse::<Proto>() {
+    let mut parts = sub.splitn(2, "=");
+
+    let p = match parts.next() {
+        Some(n) => n,
+        None => return false, // TODO how to handle this error?
+    };
+
+    match p.parse::<Proto>() {
         Ok(n) => &n == proto,
         Err(_) => false,
     }
 }
 
-/// accepts a subprotocol entry and returns only the versions in that entry
+/// Expects a subprotocol entry of the form "name=1,2,3", where 1,2,3 are the
+/// supported versions.
+/// Strips "name=" and returns only the subprotocol entries.
 fn strip_protocol(str_p: &str) -> &str {
-    let mut parts = str_p.split("=").collect::<Vec<&str>>();
-    parts.pop().unwrap()
+    println!("{:?}", str_p);
+    let mut parts = str_p.splitn(2, "=").skip(1);
+
+    match parts.next() {
+        Some(n) => n,
+        None => panic!("invalid subprotocol entry"),
+    }
 }
 
 /// Return true iff the provided protocol list includes support for the
@@ -227,18 +240,35 @@ pub fn list_supports_protocol(list: &str, proto: Proto, vers: u32) -> bool {
 /// Takes a protocol range and expands it to all numbers within that range.
 /// For example, 1-3 expands to 1,2,3
 fn expand(range: &str) -> Vec<u32> {
+    let empty = Vec::new();
+
     if range.is_empty() {
-        return Vec::new();
+        return empty;
     }
 
-    let parts = range.split("-").collect::<Vec<&str>>();
+    let mut parts = range.split("-");
 
-    let low = parts[0].parse::<u32>().unwrap();
-    if parts.len() == 1 {
-        return vec![low];
-    }
+    let l = match parts.next() {
+        Some(n) => n,
+        None => return empty, // TODO validate error case here
+    };
 
-    let high = parts[1].parse::<u32>().unwrap();
+    let low = match l.parse::<u32>() {
+        Ok(n) => n,
+        Err(_) => return empty, // TODO validate error case
+    };
+
+    let h = match parts.next() {
+        Some(n) => n,
+        None => return vec![low],
+    };
+
+    // in the case of malformed entry, return empty
+    let high = match h.parse::<u32>() {
+        Ok(n) => n,
+        Err(_) => return empty, // TODO validate
+    };
+
     (low..high + 1).collect()
 }
 
@@ -337,21 +367,17 @@ pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
     let mut uniques: HashMap<String, Vec<u32>> = HashMap::new();
 
     for x in unified {
-        let mut parts: Vec<&str> = x.split("=").collect();
+        let mut parts = x.splitn(2, "=");
 
-        let v: &str = match parts.pop() {
+        let proto: &str = match parts.next() {
             Some(n) => n,
-            None => "",
+            None => continue, // TODO how to handle malformed protos?
         };
 
-        let proto: &str = match parts.pop() {
+        let v: &str = match parts.next() {
             Some(n) => n,
-            None => "",
+            None => continue, // TODO how to handle malformed protos?
         };
-
-        if proto.is_empty() || v.is_empty() {
-            continue; // TODO verify if there are malformed protover entries
-        }
 
         let vers = get_versions(v);
 
@@ -502,6 +528,8 @@ mod test {
         assert_eq!(vec![1], expand("1"));
         assert_eq!(vec![1, 2], expand("1-2"));
         assert_eq!(vec![1, 2, 3, 4], expand("1-4"));
+        assert_eq!(Vec::<u32>::new(), expand("a"));
+        assert_eq!(Vec::<u32>::new(), expand("1-a"));
     }
 
     #[test]
