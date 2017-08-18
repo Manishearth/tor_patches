@@ -92,7 +92,8 @@ pub unsafe extern "C" fn protocol_list_supports_protocol(
     };
 
     let proto = translate_to_rust(tp);
-    let is_supported = super::list_supports_protocol(r_str, proto, vers);
+    let is_supported =
+        super::protover_string_supports_protocol(r_str, proto, vers);
 
     return if is_supported { 1 } else { 0 };
 }
