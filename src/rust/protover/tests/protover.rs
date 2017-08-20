@@ -252,6 +252,23 @@ fn protover_compute_vote_handles_duplicated_versions() {
 }
 
 #[test]
+fn protover_compute_vote_handles_invalid_proto_entries() {
+    let protocols = vec![
+        String::from("Cons=1"),
+        String::from("Cons=1"),
+        String::from("Link=a"),
+    ];
+    assert_eq!("Cons=1", protover::compute_vote(protocols, 2));
+
+    let protocols = vec![
+        String::from("Cons=1"),
+        String::from("Cons=1"),
+        String::from("Link=1-%"),
+    ];
+    assert_eq!("Cons=1", protover::compute_vote(protocols, 2));
+}
+
+#[test]
 fn protover_is_supported_here_returns_true_for_supported_protocol() {
     assert_eq!(true, protover::is_supported_here(protover::Proto::Cons, 1));
 }

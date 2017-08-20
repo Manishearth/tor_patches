@@ -34,9 +34,25 @@ pub mod ffi;
 /// Authorities should use this to decide whether to guess proto lines.
 const FIRST_TOR_VERSION_TO_ADVERTISE_PROTOCOLS: &'static str = "0.2.9.3-alpha";
 
+/// The maximum number of subprotocol version numbers we will attempt to expand
+/// before concluding that someone is trying to DoS us
 const MAX_PROTOCOLS_TO_EXPAND: u32 = 500;
 
-/// Subprotocols in Tor. Indicates which subprotocol a relay supports.
+/// Currently supported protocols and their versions
+const SUPPORTED_PROTOCOLS: &'static [&'static str] = &[
+    "Cons=1-2",
+    "Desc=1-2",
+    "DirCache=1-2",
+    "HSDir=1-2",
+    "HSIntro=3-4",
+    "HSRend=1-2",
+    "Link=1-4",
+    "LinkAuth=1,3",
+    "Microdesc=1-2",
+    "Relay=1-2",
+];
+
+/// Known subprotocols in Tor. Indicates which subprotocol a relay supports.
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub enum Proto {
     Cons,
@@ -77,27 +93,13 @@ impl FromStr for Proto {
     }
 }
 
-/// Currently supported protocols and their versions
-const SUPPORTED_PROTOCOLS: &'static [&'static str] = &[
-    "Cons=1-2",
-    "Desc=1-2",
-    "DirCache=1-2",
-    "HSDir=1-2",
-    "HSIntro=3-4",
-    "HSRend=1-2",
-    "Link=1-4",
-    "LinkAuth=1,3",
-    "Microdesc=1-2",
-    "Relay=1-2",
-];
-
 pub fn get_supported_protocols() -> String {
     SUPPORTED_PROTOCOLS.join(" ")
 }
 
 fn parse_protocols(
     protocols: &[&str],
-) -> Result<HashMap<Proto, Vec<u32>>, &'static str> {
+) -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
     let mut parsed = HashMap::new();
 
     for subproto in protocols {
@@ -107,10 +109,9 @@ fn parse_protocols(
     Ok(parsed)
 }
 
-
 fn parse_protocols_from_string<'a>(
     protocol_string: &'a str,
-) -> Result<HashMap<Proto, Vec<u32>>, &'static str> {
+) -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
     let protocols: &[&'a str] =
         &protocol_string.split(" ").collect::<Vec<&'a str>>()[..];
 
@@ -119,45 +120,76 @@ fn parse_protocols_from_string<'a>(
 
 /// Translates supported tor versions from  a string into a hashmap, which is
 /// useful when looking up a specific subprotocol.
-fn tor_supported() -> Result<HashMap<Proto, Vec<u32>>, &'static str> {
+fn tor_supported() -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
     parse_protocols(&SUPPORTED_PROTOCOLS)
 }
 
-/// Returns versions supported by the subprotocol.
-/// A protocol entry has a keyword, an "=" sign, and one or more version numbers
-fn get_versions(version_string: &str) -> Result<Vec<u32>, &'static str> {
+/// Get the unique version numbers supported by a subprotocol.
+///
+/// # Inputs
+///
+/// * `version_string`, a string comprised of "[0-9,-]"
+///
+/// # Returns
+///
+/// A `Result` whose `Ok` value is a `HashSet<u32>` holding all of the unique
+/// version numbers.  If there were ranges in the `version_string`, then these
+/// are expanded, i.e. `"1-3"` would expand to `HashSet<u32>::new([1, 2, 3])`.
+/// The returned HashSet is *unordered*.
+///
+/// The returned `Result`'s `Err` value is an `&'static str` with a description
+/// of the error.
+///
+/// # Errors
+///
+/// This function will error if:
+///
+/// * the `version_string` is empty or contains an equals (`"="`) sign,
+/// * the expansion of a version range produces an error (see `expand_version_range`),
+/// * any single version number is not parseable as an `u32` in radix 10, or
+/// * there are greater than 2^16 version numbers to expand.
+fn get_versions(version_string: &str) -> Result<HashSet<u32>, &'static str> {
     if version_string.is_empty() {
         return Err("version string is empty");
     }
 
-    let mut versions = Vec::<u32>::new();
+    let mut versions = HashSet::<u32>::new();
 
     for piece in version_string.split(",") {
         if piece.contains("-") {
             for p in expand_version_range(piece)? {
-                versions.insert(0, p)
+                versions.insert(p);
             }
         } else {
-            versions.insert(
-                0,
-                u32::from_str(piece).or(Err("invalid protocol entry"))?,
-            );
+            versions.insert(u32::from_str(piece).or(
+                Err("invalid protocol entry"),
+            )?);
         }
-        versions.dedup();
 
         if versions.len() > MAX_PROTOCOLS_TO_EXPAND as usize {
             return Err("Too many versions to expand");
         }
     }
-
-
-    versions.sort();
     Ok(versions)
 }
 
+
+/// Parse the subprotocol type and its version numbers.
+///
+/// # Inputs
+///
+/// * A `subprotocol` string, comprised of a keyword, an "=" sign, and one or
+///   more version numbers.
+///
+/// # Returns
+///
+/// A `Result` whose `Ok` value is a tuple of `(Proto, HashSet<u32>)`, where the
+/// first element is the subprotocol type (see `protover::Proto`) and the last
+/// element is a(n unordered) set of unique version numbers which are supported.
+/// Otherwise, the `Err` value of this `Result` is a description of the error
 fn get_proto_and_vers<'a>(
     str_p: &'a str,
-) -> Result<(Proto, Vec<u32>), &'static str> {
+) -> Result<(Proto, HashSet<u32>), &'static str> {
     let mut parts: SplitN<'a, &str> = str_p.splitn(2, "=");
 
     let proto: &str = match parts.next() {
@@ -179,16 +211,21 @@ fn get_proto_and_vers<'a>(
 /// Takes a single subprotocol entry as a string, parses it into subprotocol
 /// and version parts, and then checks whether any of those versions are
 /// unsupported.
-fn contains_only_ssupported_protocols(str_v: &str) -> bool {
+///
+/// # Returns
+///
+/// Returns `true` if there are versions supported by tor which we do not
+fn contains_only_supported_protocols(str_v: &str) -> bool {
     let (name, mut vers) = match get_proto_and_vers(str_v) {
-        Ok(n) => n,
-        Err(_) => return false, // TODO log to Tor's logger
-    };
-
-    let currently_supported: HashMap<Proto, Vec<u32>> = match tor_supported() {
         Ok(n) => n,
         Err(_) => return false,
     };
+
+    let currently_supported: HashMap<Proto, HashSet<u32>> =
+        match tor_supported() {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
 
     vers.retain(|x| !currently_supported[&name].contains(x));
     vers.is_empty()
@@ -211,10 +248,37 @@ fn contains_only_ssupported_protocols(str_v: &str) -> bool {
 /// assert_eq!(false, is_supported);
 /// assert_eq!("Link=5-6", unsupported);
 /// ```
+
+/// Determine if we support every protocol a client supports, and if not,
+/// determine which protocols we do not have support for.
+///
+/// # Inputs
+///
+/// Accepted data is in the string format as follows:
+///
+/// ```ignore
+/// "HSDir=1-1 LinkAuth=1-2"
+/// ```
+/// # Returns
+///
+/// Return `true` if every protocol version is one that we support.
+/// Otherwise, return `false`.
+/// Optionally, return parameters which the client supports but which we do not
+///
+/// # Examples
+/// ```
+/// use protover::all_supported;
+///
+/// let (is_supported, unsupported)  = all_supported("Link=1");
+/// assert_eq!(true, is_supported);
+///
+/// let (is_supported, unsupported)  = all_supported("Link=5-6");
+/// assert_eq!(false, is_supported);
+/// assert_eq!("Link=5-6", unsupported);
 pub fn all_supported(protocols: &str) -> (bool, String) {
     let unsupported: Vec<&str> = protocols
         .split_whitespace()
-        .filter(|v| !contains_only_ssupported_protocols(v))
+        .filter(|v| !contains_only_supported_protocols(v))
         .collect::<Vec<&str>>();
 
     (unsupported.is_empty(), unsupported.join(" "))
@@ -236,7 +300,7 @@ pub fn protover_string_supports_protocol(
     proto: Proto,
     vers: u32,
 ) -> bool {
-    let supported: HashMap<Proto, Vec<u32>>;
+    let supported: HashMap<Proto, HashSet<u32>>;
 
     match parse_protocols_from_string(list) {
         Ok(result) => supported = result,
@@ -333,44 +397,32 @@ fn contract_protocol_list<'a>(supported_hash: &'a HashSet<u32>) -> String {
     final_output.join(",")
 }
 
-fn parse_protocols_with_duplicates(
-    protocols: Vec<String>,
-) -> Result<HashMap<String, Vec<u32>>, &'static str> {
-    let unified = protocols
-        .iter()
-        .flat_map(|ref k| k.split_whitespace().collect::<Vec<&str>>())
-        .collect::<Vec<&str>>();
+fn parse_protocols_from_string_with_no_validation<'a>(
+    protocol_string: &'a str,
+) -> Result<HashMap<String, HashSet<u32>>, &'static str> {
+    let protocols: &[&'a str] =
+        &protocol_string.split(" ").collect::<Vec<&'a str>>()[..];
 
-    let mut uniques: HashMap<String, Vec<u32>> = HashMap::new();
+    let mut parsed: HashMap<String, HashSet<u32>> = HashMap::new();
 
-    for x in unified {
-        let mut parts = x.splitn(2, "=");
+    for subproto in protocols {
+        let mut parts: SplitN<'a, &str> = subproto.splitn(2, "=");
 
-        let proto: &str = match parts.next() {
+        let name: &str = match parts.next() {
             Some(n) => n,
-            None => continue, // TODO how to handle malformed protos?
+            None => return Err("invalid protover entry"),
         };
 
-        let v: &str = match parts.next() {
+        let vers: &str = match parts.next() {
             Some(n) => n,
-            None => continue, // TODO how to handle malformed protos?
+            None => return Err("invalid protover entry"),
         };
 
-        let vers = match get_versions(v) {
-            Ok(n) => n,
-            Err(_) => continue,
-        };
+        let versions = get_versions(vers)?;
 
-        let str_name = String::from(proto);
-        if uniques.contains_key(&str_name) {
-            let ref mut val = *uniques.get_mut(&str_name).unwrap();
-            val.extend(vers.iter().cloned());
-        } else {
-            uniques.insert(str_name, vers);
-        }
+        parsed.insert(String::from(name), versions);
     }
-
-    Ok(uniques)
+    Ok(parsed)
 }
 
 /// Protocol voting implementation.
@@ -388,46 +440,58 @@ fn parse_protocols_with_duplicates(
 ///
 /// # Examples
 /// ```
-/// use protover::*;
+/// use protover::compute_vote;
 ///
 /// let protos = vec![String::from("Link=3-4"), String::from("Link=3")];
 /// let vote = compute_vote(protos, 2);
 /// assert_eq!("Link=3", vote)
 /// ```
-pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
+pub fn compute_vote(
+    list_of_proto_strings: Vec<String>, // TODO this should be a list of string references
+    threshold: i32,
+) -> String {
     let empty = String::from("");
 
-    if protos.is_empty() {
+    if list_of_proto_strings.is_empty() {
         return empty;
     }
 
-    let protocols: HashMap<String, Vec<u32>>;
+    let mut all_count: HashMap<String, HashMap<u32, usize>> = HashMap::new();
 
-    // parse the protocol list into a hashmap
-    match parse_protocols_with_duplicates(protos) {
-        Ok(result) => protocols = result,
-        Err(_) => return empty,
+    // parse and collect all of the protos and their versions and collect them
+    for vote in list_of_proto_strings {
+        let this_vote: HashMap<String, HashSet<u32>> =
+            match parse_protocols_from_string_with_no_validation(&vote) {
+                Ok(result) => result,
+                Err(_) => continue,
+            };
+
+        for (protocol, versions) in this_vote {
+            let supported_vers: &mut HashMap<u32, usize> =
+                all_count.entry(protocol).or_insert(HashMap::new());
+
+            for version in versions {
+                let counter: &mut usize =
+                    supported_vers.entry(version).or_insert(0);
+                *counter += 1;
+            }
+        }
     }
 
     let mut final_output: HashMap<String, String> =
         HashMap::with_capacity(SUPPORTED_PROTOCOLS.len());
 
-    for (protocol, versions) in protocols {
+    // Go through and remove verstions that are less than the threshold
+    for (protocol, versions) in all_count {
         let mut meets_threshold = HashSet::new();
-
-        // keep only the versions which meet the given threshold
-        for version in &versions {
-            if !meets_threshold.contains(version) {
-                if versions.iter().filter(|&y| *version == *y).count() >=
-                    threshold as usize
-                {
-                    meets_threshold.insert(*version);
-                }
+        for (version, count) in versions {
+            if count >= threshold as usize {
+                meets_threshold.insert(version);
             }
         }
 
-        // for each protocol, create a string of its version list in the
-        // expected protocol entry format.
+        // For each protocol, compress its version list into the expected
+        // protocol version string format
         let contracted = contract_protocol_list(&meets_threshold);
         if !contracted.is_empty() {
             final_output.insert(protocol, contracted);
@@ -437,8 +501,11 @@ pub fn compute_vote(protos: Vec<String>, threshold: i32) -> String {
     write_vote_to_string(&final_output)
 }
 
-// TODO return a result
-// Returns a String comprised of protocol entries in alphabetical order
+/// Takes a HashMap, where the keys are protocol names and values are a string
+/// representation of supported versions. Sorts the keys in alphabetical order
+/// and creates into the expected  subprotocol entry format.
+///
+/// Return a String comprised of protocol entries in alphabetical order
 fn write_vote_to_string(vote: &HashMap<String, String>) -> String {
     let mut keys: Vec<&String> = vote.keys().collect();
     keys.sort();
@@ -464,7 +531,7 @@ fn write_vote_to_string(vote: &HashMap<String, String>) -> String {
 /// assert_eq!(true, is_supported);
 /// ```
 pub fn is_supported_here(proto: Proto, vers: u32) -> bool {
-    let currently_supported: HashMap<Proto, Vec<u32>>;
+    let currently_supported: HashMap<Proto, HashSet<u32>>;
 
     match tor_supported() {
         Ok(result) => currently_supported = result,
@@ -509,34 +576,65 @@ pub fn compute_for_old_tor(version: String) -> String {
 mod test {
     #[test]
     fn test_get_versions() {
+        use std::collections::HashSet;
+
         use super::get_versions;
 
-        // TODO handle non-integer characters?
         assert_eq!(Err("version string is empty"), get_versions(""));
-        assert_eq!(Ok(vec![1]), get_versions("1"));
-        assert_eq!(Ok(vec![1, 2]), get_versions("1,2"));
-        assert_eq!(Ok(vec![1, 2, 3]), get_versions("1,2,3"));
-        assert_eq!(Ok(vec![1, 2, 3]), get_versions("1-3"));
-        assert_eq!(Ok(vec![1, 2, 3, 5]), get_versions("1-3,5"));
-        assert_eq!(Ok(vec![1, 3, 4, 5]), get_versions("1,3-5"));
+        assert_eq!(Err("invalid protocol entry"), get_versions("a,b"));
+        assert_eq!(Err("invalid protocol entry"), get_versions("1,!"));
+
+        {
+            let mut versions: HashSet<u32> = HashSet::new();
+            versions.insert(1);
+            assert_eq!(Ok(versions), get_versions("1"));
+        }
+        {
+            let mut versions: HashSet<u32> = HashSet::new();
+            versions.insert(1);
+            versions.insert(2);
+            assert_eq!(Ok(versions), get_versions("1,2"));
+        }
+        {
+            let mut versions: HashSet<u32> = HashSet::new();
+            versions.insert(1);
+            versions.insert(2);
+            versions.insert(3);
+            assert_eq!(Ok(versions), get_versions("1-3"));
+        }
+        {
+            let mut versions: HashSet<u32> = HashSet::new();
+            versions.insert(1);
+            versions.insert(2);
+            versions.insert(5);
+            assert_eq!(Ok(versions), get_versions("1-2,5"));
+        }
+        {
+            let mut versions: HashSet<u32> = HashSet::new();
+            versions.insert(1);
+            versions.insert(3);
+            versions.insert(4);
+            versions.insert(5);
+            assert_eq!(Ok(versions), get_versions("1,3-5"));
+        }
     }
 
     #[test]
-    fn test_contains_only_ssupported_protocols() {
-        use super::contains_only_ssupported_protocols;
+    fn test_contains_only_supported_protocols() {
+        use super::contains_only_supported_protocols;
 
-        assert_eq!(false, contains_only_ssupported_protocols(""));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons="));
-        assert_eq!(true, contains_only_ssupported_protocols("Cons=1"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=0"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=0-1"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=5"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=1-5"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=1,5"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=5,6"));
-        assert_eq!(false, contains_only_ssupported_protocols("Cons=1,5,6"));
-        assert_eq!(true, contains_only_ssupported_protocols("Cons=1,2"));
-        assert_eq!(true, contains_only_ssupported_protocols("Cons=1-2"));
+        assert_eq!(false, contains_only_supported_protocols(""));
+        assert_eq!(false, contains_only_supported_protocols("Cons="));
+        assert_eq!(true, contains_only_supported_protocols("Cons=1"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=0"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=0-1"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=5"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=1-5"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=1,5"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=5,6"));
+        assert_eq!(false, contains_only_supported_protocols("Cons=1,5,6"));
+        assert_eq!(true, contains_only_supported_protocols("Cons=1,2"));
+        assert_eq!(true, contains_only_supported_protocols("Cons=1-2"));
     }
 
     //    TODO move to /tests
