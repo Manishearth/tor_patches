@@ -1,12 +1,24 @@
-extern crate libc;
-extern crate smartlist;
-extern crate tor_util;
+//! FFI functions, only to be called from C.
+//!
+//! Equivalent C versions of this api are in `src/or/protover.c`
 
-use self::smartlist::*;
+use smartlist::*;
+
+use tor_util::RustString;
+
 use std::fmt;
-use self::libc::{c_char, c_int, uint32_t};
+use libc::{c_char, c_int, uint32_t};
 use std::ffi::CStr;
 use std::ffi::CString;
+
+// import from protover library
+use protover::Proto;
+use protover::all_supported;
+use protover::protover_string_supports_protocol;
+use protover::get_supported_protocols;
+use protover::compute_vote;
+use protover::is_supported_here;
+use protover::compute_for_old_tor;
 
 /// List of recognized subprotocols (C representation)
 #[repr(C)]
@@ -25,18 +37,18 @@ pub enum ProtocolType {
     PRT_CONS,
 }
 
-fn translate_to_rust(s: ProtocolType) -> super::Proto {
+fn translate_to_rust(s: ProtocolType) -> Proto {
     match s {
-        ProtocolType::PRT_DESC => super::Proto::Desc,
-        ProtocolType::PRT_CONS => super::Proto::Cons,
-        ProtocolType::PRT_DIRCACHE => super::Proto::DirCache,
-        ProtocolType::PRT_HSDIR => super::Proto::HSDir,
-        ProtocolType::PRT_HSINTRO => super::Proto::HSIntro,
-        ProtocolType::PRT_HSREND => super::Proto::HSRend,
-        ProtocolType::PRT_LINK => super::Proto::Link,
-        ProtocolType::PRT_LINKAUTH => super::Proto::LinkAuth,
-        ProtocolType::PRT_MICRODESC => super::Proto::Microdesc,
-        ProtocolType::PRT_RELAY => super::Proto::Relay,
+        ProtocolType::PRT_DESC => Proto::Desc,
+        ProtocolType::PRT_CONS => Proto::Cons,
+        ProtocolType::PRT_DIRCACHE => Proto::DirCache,
+        ProtocolType::PRT_HSDIR => Proto::HSDir,
+        ProtocolType::PRT_HSINTRO => Proto::HSIntro,
+        ProtocolType::PRT_HSREND => Proto::HSRend,
+        ProtocolType::PRT_LINK => Proto::Link,
+        ProtocolType::PRT_LINKAUTH => Proto::LinkAuth,
+        ProtocolType::PRT_MICRODESC => Proto::Microdesc,
+        ProtocolType::PRT_RELAY => Proto::Relay,
     }
 }
 
@@ -62,7 +74,7 @@ pub unsafe extern "C" fn protover_all_supported(
         Err(_) => return 1,
     };
 
-    let (status, unsupported) = super::all_supported(r_str);
+    let (status, unsupported) = all_supported(r_str);
 
     if status == false {
         let c_unsupported = match CString::new(unsupported) {
@@ -92,42 +104,39 @@ pub unsafe extern "C" fn protocol_list_supports_protocol(
     };
 
     let proto = translate_to_rust(tp);
-    let is_supported =
-        super::protover_string_supports_protocol(r_str, proto, vers);
+    let is_supported = protover_string_supports_protocol(r_str, proto, vers);
 
     return if is_supported { 1 } else { 0 };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_get_supported_protocols()
-    -> tor_util::RustString
-{
-    let supported = super::get_supported_protocols();
+pub unsafe extern "C" fn protover_get_supported_protocols() -> RustString {
+    let supported = get_supported_protocols();
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
         Err(_) => panic!("invalid supported protocol string"),
     };
-    tor_util::RustString::from(c_supported)
+    RustString::from(c_supported)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn protover_compute_vote(
     list: *mut Smartlist,
     threshold: c_int,
-) -> tor_util::RustString {
+) -> RustString {
     if list.is_null() {
         // Not handling errors in unwrapping as this is an empty string
-        return tor_util::RustString::from(CString::new("").unwrap());
+        return RustString::from(CString::new("").unwrap());
     }
 
     let data = get_list_of_strings(&*list); // TODO verify this is ok
-    let vote = super::compute_vote(data, threshold);
+    let vote = compute_vote(data, threshold);
 
     let c_vote = match CString::new(vote) {
         Ok(n) => n,
         Err(_) => panic!("invalid strings in computed vote"),
     };
-    tor_util::RustString::from(c_vote)
+    RustString::from(c_vote)
 }
 
 #[no_mangle]
@@ -136,7 +145,7 @@ pub unsafe extern "C" fn protover_is_supported_here(
     vers: uint32_t,
 ) -> c_int {
     let proto = translate_to_rust(pt);
-    let is_supported = super::is_supported_here(proto, vers);
+    let is_supported = is_supported_here(proto, vers);
 
     return if is_supported { 1 } else { 0 };
 }
@@ -152,7 +161,7 @@ pub unsafe extern "C" fn protover_compute_for_old_tor(
         Err(_) => return CString::new("").unwrap().into_raw(),
     };
 
-    let supported = super::compute_for_old_tor(String::from(r_str));
+    let supported = compute_for_old_tor(String::from(r_str));
 
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
