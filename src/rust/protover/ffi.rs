@@ -6,7 +6,6 @@ use smartlist::*;
 
 use tor_util::RustString;
 
-use std::fmt;
 use libc::{c_char, c_int, uint32_t};
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -20,41 +19,22 @@ use protover::compute_vote;
 use protover::is_supported_here;
 use protover::compute_for_old_tor;
 
-/// List of recognized subprotocols (C representation)
-#[repr(C)]
-#[derive(Debug, Eq, PartialEq)]
-#[allow(non_camel_case_types)]
-pub enum ProtocolType {
-    PRT_LINK,
-    PRT_LINKAUTH,
-    PRT_RELAY,
-    PRT_DIRCACHE,
-    PRT_HSDIR,
-    PRT_HSINTRO,
-    PRT_HSREND,
-    PRT_DESC,
-    PRT_MICRODESC,
-    PRT_CONS,
-}
-
-fn translate_to_rust(s: ProtocolType) -> Proto {
-    match s {
-        ProtocolType::PRT_DESC => Proto::Desc,
-        ProtocolType::PRT_CONS => Proto::Cons,
-        ProtocolType::PRT_DIRCACHE => Proto::DirCache,
-        ProtocolType::PRT_HSDIR => Proto::HSDir,
-        ProtocolType::PRT_HSINTRO => Proto::HSIntro,
-        ProtocolType::PRT_HSREND => Proto::HSRend,
-        ProtocolType::PRT_LINK => Proto::Link,
-        ProtocolType::PRT_LINKAUTH => Proto::LinkAuth,
-        ProtocolType::PRT_MICRODESC => Proto::Microdesc,
-        ProtocolType::PRT_RELAY => Proto::Relay,
-    }
-}
-
-impl fmt::Display for ProtocolType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+/// Translate C enums to Rust Proto enums, using the integer value of the C
+/// enum to map to its associated Rust enum
+/// This is dependant on the associated C enum preserving ordering.
+fn translate_to_rust(c_proto: uint32_t) -> Result<Proto, &'static str> {
+    match c_proto {
+        0 => Ok(Proto::Link),
+        1 => Ok(Proto::LinkAuth),
+        2 => Ok(Proto::Relay),
+        3 => Ok(Proto::DirCache),
+        4 => Ok(Proto::HSDir),
+        5 => Ok(Proto::HSIntro),
+        6 => Ok(Proto::HSRend),
+        7 => Ok(Proto::Desc),
+        8 => Ok(Proto::Microdesc),
+        9 => Ok(Proto::Cons),
+        _ => Err("Invalid protocol type"),
     }
 }
 
@@ -90,7 +70,7 @@ pub unsafe extern "C" fn protover_all_supported(
 #[no_mangle]
 pub unsafe extern "C" fn protocol_list_supports_protocol(
     list: *const c_char,
-    tp: ProtocolType,
+    tp: uint32_t,
     vers: uint32_t,
 ) -> c_int {
     if list.is_null() {
@@ -103,7 +83,11 @@ pub unsafe extern "C" fn protocol_list_supports_protocol(
         Err(_) => return 1,
     };
 
-    let proto = translate_to_rust(tp);
+    let proto = match translate_to_rust(tp) {
+        Ok(n) => n,
+        Err(_) => return 0,
+    };
+
     let is_supported = protover_string_supports_protocol(r_str, proto, vers);
 
     return if is_supported { 1 } else { 0 };
@@ -141,10 +125,13 @@ pub unsafe extern "C" fn protover_compute_vote(
 
 #[no_mangle]
 pub unsafe extern "C" fn protover_is_supported_here(
-    pt: ProtocolType,
+    pt: uint32_t,
     vers: uint32_t,
 ) -> c_int {
-    let proto = translate_to_rust(pt);
+    let proto = match translate_to_rust(pt) {
+        Ok(n) => n,
+        Err(_) => return 0,
+    };
     let is_supported = is_supported_here(proto, vers);
 
     return if is_supported { 1 } else { 0 };
