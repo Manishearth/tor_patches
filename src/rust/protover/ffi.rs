@@ -10,14 +10,7 @@ use libc::{c_char, c_int, uint32_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 
-// import from protover library
-use protover::Proto;
-use protover::all_supported;
-use protover::protover_string_supports_protocol;
-use protover::get_supported_protocols;
-use protover::compute_vote;
-use protover::is_supported_here;
-use protover::compute_for_old_tor;
+use protover::*;
 
 /// Translate C enums to Rust Proto enums, using the integer value of the C
 /// enum to map to its associated Rust enum
