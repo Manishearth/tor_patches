@@ -15,8 +15,8 @@ pub trait Smartlist {
 #[repr(C)]
 pub struct Stringlist {
     pub list: *const *const c_char,
-    pub num_used: i8,
-    pub capacity: i8,
+    pub num_used: u8,
+    pub capacity: u8,
 }
 
 impl Smartlist for Stringlist {
