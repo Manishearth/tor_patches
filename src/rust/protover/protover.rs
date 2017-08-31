@@ -433,6 +433,16 @@ pub fn compute_vote(
         return empty;
     }
 
+    // all_count is a structure to represent the count of the number of
+    // supported versions for a specific protocol. For example, in JSON format:
+    // {
+    //  "FirstSupportedProtocol": {
+    //      "1": "3",
+    //      "2": "1"
+    //  }
+    // }
+    // means that FirstSupportedProtocol has three votes which support version
+    // 1, and one vote that supports version 2
     let mut all_count: HashMap<String, HashMap<u32, usize>> = HashMap::new();
 
     // parse and collect all of the protos and their versions and collect them
