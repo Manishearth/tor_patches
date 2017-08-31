@@ -1,7 +1,7 @@
 extern crate libc;
 
 use std::slice;
-use self::libc::{c_char};
+use self::libc::c_char;
 use std::ffi::CStr;
 
 #[repr(C)]
@@ -11,9 +11,10 @@ pub struct Smartlist {
     pub capacity: i8,
 }
 
-pub unsafe fn get_list_of_strings(sl: &Smartlist) -> Vec<String> {
+pub unsafe fn get_list_of_strings(sl: *mut Smartlist) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
-    let elems = slice::from_raw_parts(sl.list, sl.num_used as usize);
+    // we receive a C pointer to a smartlist
+    let elems = slice::from_raw_parts((*sl).list, (*sl).num_used as usize);
 
     for i in elems.iter() {
         let c_str = CStr::from_ptr(*i as *const c_char);
@@ -21,7 +22,7 @@ pub unsafe fn get_list_of_strings(sl: &Smartlist) -> Vec<String> {
         v.push(String::from(r_str));
     }
 
-   v
+    v
 }
 
 

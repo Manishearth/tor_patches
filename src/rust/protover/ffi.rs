@@ -106,7 +106,7 @@ pub unsafe extern "C" fn protover_compute_vote(
         return RustString::from(CString::new("").unwrap());
     }
 
-    let data = get_list_of_strings(&*list); // TODO verify this is ok
+    let data = get_list_of_strings(list); // TODO verify this is ok
     let vote = compute_vote(data, threshold);
 
     let c_vote = match CString::new(vote) {

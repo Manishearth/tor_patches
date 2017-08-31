@@ -41,7 +41,7 @@ int protover_all_supported(const char *s, char **missing);
 int protover_is_supported_here(protocol_type_t pr, uint32_t ver);
 rust_str_t protover_get_supported_protocols(void);
 
-char *protover_compute_vote(const smartlist_t *list_of_proto_strings,
+rust_str_t protover_compute_vote(const smartlist_t *list_of_proto_strings,
                             int threshold);
 const char *protover_compute_for_old_tor(const char *version);
 int protocol_list_supports_protocol(const char *list, protocol_type_t tp,

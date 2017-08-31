@@ -120,27 +120,32 @@ test_protover_vote(void *arg)
   (void) arg;
 
   smartlist_t *lst = smartlist_new();
-  char *result = protover_compute_vote(lst, 1);
+  rust_str_t result = protover_compute_vote(lst, 1);
+  const char *res = rust_str_get(result);
 
-  tt_str_op(result, OP_EQ, "");
-  tor_free(result);
+  tt_str_op(res, OP_EQ, "");
+  rust_str_free(result);
 
   smartlist_add(lst, (void*) "Foo=1-10,500 Bar=1,3-7,8");
   result = protover_compute_vote(lst, 1);
-  tt_str_op(result, OP_EQ, "Bar=1,3-8 Foo=1-10,500");
-  tor_free(result);
+  res = rust_str_get(result);
+
+  tt_str_op(res, OP_EQ, "Bar=1,3-8 Foo=1-10,500");
+  rust_str_free(result);
 
   smartlist_add(lst, (void*) "Quux=123-456,78 Bar=2-6,8 Foo=9");
   result = protover_compute_vote(lst, 1);
-  tt_str_op(result, OP_EQ, "Bar=1-8 Foo=1-10,500 Quux=78,123-456");
-  tor_free(result);
+  res = rust_str_get(result);
+
+  tt_str_op(res, OP_EQ, "Bar=1-8 Foo=1-10,500 Quux=78,123-456");
+  rust_str_free(result);
 
   result = protover_compute_vote(lst, 2);
-  tt_str_op(result, OP_EQ, "Bar=3-6,8 Foo=9");
-  tor_free(result);
+  res = rust_str_get(result);
+  tt_str_op(res, OP_EQ, "Bar=3-6,8 Foo=9");
 
  done:
-  tor_free(result);
+  rust_str_free(result);
   smartlist_free(lst);
 }
 
@@ -187,11 +192,12 @@ test_protover_list_supports_protocol_returns_true(void *arg)
 {
   (void)arg;
 
-  const char* protos = protover_get_supported_protocols();
+  rust_str_t protocols = protover_get_supported_protocols();
+  const char* protos = rust_str_get(protocols);
   int is_supported = protocol_list_supports_protocol(protos, PRT_LINK, 1);
   tt_int_op(is_supported, OP_EQ, 1);
   done:
-  ;
+  rust_str_free(protocols);
 }
 
 static void
@@ -199,10 +205,12 @@ test_protover_list_supports_protocol_for_unsupported_returns_false(void *arg)
 {
   (void)arg;
 
-  const char* protos = protover_get_supported_protocols();
+  rust_str_t protocols = protover_get_supported_protocols();
+  const char* protos = rust_str_get(protocols);
   int is_supported = protocol_list_supports_protocol(protos, PRT_LINK, 10);
   tt_int_op(is_supported, OP_EQ, 0);
   done:
+  rust_str_free(protocols);
   ;
 }
 
