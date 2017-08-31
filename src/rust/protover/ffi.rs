@@ -2,15 +2,13 @@
 //!
 //! Equivalent C versions of this api are in `src/or/protover.c`
 
-use smartlist::*;
-
-use tor_util::RustString;
-
 use libc::{c_char, c_int, uint32_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 
 use protover::*;
+use smartlist::*;
+use tor_util::RustString;
 
 /// Translate C enums to Rust Proto enums, using the integer value of the C
 /// enum to map to its associated Rust enum
@@ -98,7 +96,7 @@ pub unsafe extern "C" fn protover_get_supported_protocols() -> RustString {
 
 #[no_mangle]
 pub unsafe extern "C" fn protover_compute_vote(
-    list: *mut Smartlist,
+    list: *const Stringlist,
     threshold: c_int,
 ) -> RustString {
     if list.is_null() {
@@ -106,7 +104,7 @@ pub unsafe extern "C" fn protover_compute_vote(
         return RustString::from(CString::new("").unwrap());
     }
 
-    let data = get_list_of_strings(list); // TODO verify this is ok
+    let data = (*list).get_list();
     let vote = compute_vote(data, threshold);
 
     let c_vote = match CString::new(vote) {

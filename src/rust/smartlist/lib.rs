@@ -4,27 +4,39 @@ use std::slice;
 use self::libc::c_char;
 use std::ffi::CStr;
 
+/// Smartlists are a type used in C code in tor to define a collection of a
+/// generic type, which has a capacity and a number used. Each Smartlist
+/// defines how to extract the list of values from the underlying C structure
+/// Implementations are required to have a C representation
+/// TODO: generic vector type return value
+pub trait Smartlist {
+    unsafe fn get_list(&self) -> Vec<String>;
+}
 #[repr(C)]
-pub struct Smartlist {
+pub struct Stringlist {
     pub list: *const *const c_char,
     pub num_used: i8,
     pub capacity: i8,
 }
 
-pub unsafe fn get_list_of_strings(sl: *mut Smartlist) -> Vec<String> {
-    let mut v: Vec<String> = Vec::new();
-    // we receive a C pointer to a smartlist
-    let elems = slice::from_raw_parts((*sl).list, (*sl).num_used as usize);
+impl Smartlist for Stringlist {
+    unsafe fn get_list(&self) -> Vec<String> {
+        // TODO return type
+        let mut v: Vec<String> = Vec::new();
+        let elems = slice::from_raw_parts(self.list, self.num_used as usize);
 
-    for i in elems.iter() {
-        let c_str = CStr::from_ptr(*i as *const c_char);
-        let r_str = c_str.to_str().unwrap();
-        v.push(String::from(r_str));
+        for i in elems.iter() {
+            let c_str = CStr::from_ptr(*i as *const c_char);
+            let r_str = match c_str.to_str() {
+                Ok(n) => n,
+                Err(_) => panic!("invalid smartlist string value"),
+            };
+            v.push(String::from(r_str));
+        }
+
+        v
     }
-
-    v
 }
-
 
 #[cfg(test)]
 mod test {
@@ -36,26 +48,29 @@ mod test {
         use libc::c_char;
 
         use super::Smartlist;
-        use super::get_list_of_strings;
+        use super::Stringlist;
 
         let args = vec![String::from("a"), String::from("b")];
 
-        let cstr_argv: Vec<_> = args.iter()
+        // for each string, transform  it into a CString
+        let c_strings: Vec<_> = args.iter()
             .map(|arg| CString::new(arg.as_str()).unwrap())
             .collect();
 
-        let p_args: Vec<_> = cstr_argv.iter().map(|arg| arg.as_ptr()).collect();
+        // then, collect a pointer for each CString
+        let p_args: Vec<_> = c_strings.iter().map(|arg| arg.as_ptr()).collect();
 
+        // then, collect a pointer for the list itself
         let p: *const *const c_char = p_args.as_ptr();
 
-        let sl = Smartlist {
+        let sl = Stringlist {
             list: p,
             num_used: 2,
             capacity: 2,
         };
 
         unsafe {
-            let data = get_list_of_strings(&sl);
+            let data = sl.get_list();
             assert_eq!("a", &data[0]);
             assert_eq!("b", &data[1]);
         }
