@@ -50,7 +50,7 @@ pub unsafe extern "C" fn protover_all_supported(
     if status == false {
         let c_unsupported = match CString::new(unsupported) {
             Ok(n) => n,
-            Err(_) => panic!("invalid protocol string!"),
+            Err(_) => return 1,
         };
         *missing_out = c_unsupported.into_raw();
         return 0;
@@ -86,10 +86,14 @@ pub unsafe extern "C" fn protocol_list_supports_protocol(
 
 #[no_mangle]
 pub unsafe extern "C" fn protover_get_supported_protocols() -> RustString {
+    // unwrapping wthout handling the error is safe as the string content is
+    // controlled and is simply an empty string
+    let empty = RustString::from(CString::new("").unwrap());
+
     let supported = get_supported_protocols();
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
-        Err(_) => panic!("invalid supported protocol string"),
+        Err(_) => return empty,
     };
     RustString::from(c_supported)
 }
@@ -99,9 +103,11 @@ pub unsafe extern "C" fn protover_compute_vote(
     list: *const Stringlist,
     threshold: c_int,
 ) -> RustString {
+    // Not handling errors when unwrapping as the content is controlled
+    // and is an empty string
+    let empty = RustString::from(CString::new("").unwrap());
     if list.is_null() {
-        // Not handling errors in unwrapping as this is an empty string
-        return RustString::from(CString::new("").unwrap());
+        return empty;
     }
 
     let data = (*list).get_list();
@@ -109,7 +115,7 @@ pub unsafe extern "C" fn protover_compute_vote(
 
     let c_vote = match CString::new(vote) {
         Ok(n) => n,
-        Err(_) => panic!("invalid strings in computed vote"),
+        Err(_) => return empty,
     };
     RustString::from(c_vote)
 }
@@ -132,18 +138,20 @@ pub unsafe extern "C" fn protover_is_supported_here(
 pub unsafe extern "C" fn protover_compute_for_old_tor(
     vers: *const c_char,
 ) -> *mut c_char {
+    // Not handling errors in unwrapping as this is an empty string
+    let empty = CString::new("").unwrap().into_raw();
+
     let c_str = CStr::from_ptr(vers);
     let r_str = match c_str.to_str() {
         Ok(n) => n,
-        // Not handling errors in unwrapping as this is an empty string
-        Err(_) => return CString::new("").unwrap().into_raw(),
+        Err(_) => return empty,
     };
 
     let supported = compute_for_old_tor(String::from(r_str));
 
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
-        Err(_) => panic!("invalid strings in computed vote for old tor"),
+        Err(_) => return empty,
     };
     c_supported.into_raw()
 }
