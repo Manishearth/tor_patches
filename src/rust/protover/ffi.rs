@@ -137,9 +137,9 @@ pub unsafe extern "C" fn protover_is_supported_here(
 #[no_mangle]
 pub unsafe extern "C" fn protover_compute_for_old_tor(
     vers: *const c_char,
-) -> *mut c_char {
+) -> RustString {
     // Not handling errors in unwrapping as this is an empty string
-    let empty = CString::new("").unwrap().into_raw();
+    let empty = RustString::from(CString::new("").unwrap());
 
     let c_str = CStr::from_ptr(vers);
     let r_str = match c_str.to_str() {
@@ -147,11 +147,12 @@ pub unsafe extern "C" fn protover_compute_for_old_tor(
         Err(_) => return empty,
     };
 
+    // compute for old tor can take a reference?
     let supported = compute_for_old_tor(String::from(r_str));
 
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
         Err(_) => return empty,
     };
-    c_supported.into_raw()
+    RustString::from(c_supported)
 }

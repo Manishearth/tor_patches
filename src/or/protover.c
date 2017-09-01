@@ -708,7 +708,7 @@ protocol_list_contains(const smartlist_t *protos,
  * Note that this is only used to infer protocols for Tor versions that
  * can't declare their own.
  **/
-const char *
+rust_str_t
 protover_compute_for_old_tor(const char *version)
 {
   if (tor_version_as_new_as(version,

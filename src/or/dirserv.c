@@ -2963,8 +2963,10 @@ dirserv_generate_networkstatus_vote_obj(crypto_pk_t *private_key,
       if (ri->protocol_list) {
         vrs->protocols = tor_strdup(ri->protocol_list);
       } else {
-        vrs->protocols = tor_strdup(
-                              protover_compute_for_old_tor(vrs->version));
+        rust_str_t r_s = protover_compute_for_old_tor(vrs->version);
+        const char *s = rust_str_get(r_s);
+        vrs->protocols = tor_strdup(s);
+        rust_str_free(r_s);
       }
       vrs->microdesc = dirvote_format_all_microdesc_vote_lines(ri, now,
                                                         microdescriptors);
