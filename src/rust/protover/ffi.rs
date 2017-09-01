@@ -106,6 +106,7 @@ pub unsafe extern "C" fn protover_compute_vote(
     // Not handling errors when unwrapping as the content is controlled
     // and is an empty string
     let empty = RustString::from(CString::new("").unwrap());
+
     if list.is_null() {
         return empty;
     }
@@ -117,6 +118,7 @@ pub unsafe extern "C" fn protover_compute_vote(
         Ok(n) => n,
         Err(_) => return empty,
     };
+
     RustString::from(c_vote)
 }
 
@@ -129,6 +131,7 @@ pub unsafe extern "C" fn protover_is_supported_here(
         Ok(n) => n,
         Err(_) => return 0,
     };
+
     let is_supported = is_supported_here(proto, vers);
 
     return if is_supported { 1 } else { 0 };
@@ -140,6 +143,10 @@ pub unsafe extern "C" fn protover_compute_for_old_tor(
 ) -> RustString {
     // Not handling errors in unwrapping as this is an empty string
     let empty = RustString::from(CString::new("").unwrap());
+
+    if vers.is_null() {
+        return empty;
+    }
 
     let c_str = CStr::from_ptr(vers);
     let r_str = match c_str.to_str() {
