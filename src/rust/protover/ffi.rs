@@ -30,64 +30,80 @@ fn translate_to_rust(c_proto: uint32_t) -> Result<Proto, &'static str> {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_all_supported(
-    relay_vers: *const c_char,
+pub extern "C" fn protover_all_supported(
+    c_relay_version: *const c_char,
     missing_out: *mut *mut c_char,
 ) -> c_int {
 
-    if relay_vers.is_null() || missing_out.is_null() {
+    if c_relay_version.is_null() || missing_out.is_null() {
         return 1;
     }
 
-    let c_str = CStr::from_ptr(relay_vers);
-    let r_str = match c_str.to_str() {
+    // Require an unsafe block as we need to read the version from a c string.
+    // We check above to ensure the pointer to this string is not null.
+    let c_str: &CStr;
+    unsafe {
+        c_str = CStr::from_ptr(c_relay_version);
+    }
+
+    let relay_version = match c_str.to_str() {
         Ok(n) => n,
         Err(_) => return 1,
     };
 
-    let (status, unsupported) = all_supported(r_str);
+    let (status, unsupported) = all_supported(relay_version);
 
     if status == false {
         let c_unsupported = match CString::new(unsupported) {
             Ok(n) => n,
             Err(_) => return 1,
         };
-        *missing_out = c_unsupported.into_raw();
+
+        unsafe {
+            *missing_out = c_unsupported.into_raw();
+        }
         return 0;
     }
     1
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protocol_list_supports_protocol(
-    list: *const c_char,
-    tp: uint32_t,
-    vers: uint32_t,
+pub extern "C" fn protocol_list_supports_protocol(
+    c_protocol_list: *const c_char,
+    c_protocol: uint32_t,
+    version: uint32_t,
 ) -> c_int {
-    if list.is_null() {
+    if c_protocol_list.is_null() {
         return 1;
     }
 
-    let c_str = CStr::from_ptr(list);
-    let r_str = match c_str.to_str() {
+    // Require an unsafe block as we need to read the protocol list from a c
+    // string. We check above to ensure the pointer to this string is not null.
+    let c_str: &CStr;
+    unsafe {
+        c_str = CStr::from_ptr(c_protocol_list);
+    }
+
+    let protocol_list = match c_str.to_str() {
         Ok(n) => n,
         Err(_) => return 1,
     };
 
-    let proto = match translate_to_rust(tp) {
+    let protocol = match translate_to_rust(c_protocol) {
         Ok(n) => n,
         Err(_) => return 0,
     };
 
-    let is_supported = protover_string_supports_protocol(r_str, proto, vers);
+    let is_supported =
+        protover_string_supports_protocol(protocol_list, protocol, version);
 
     return if is_supported { 1 } else { 0 };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_get_supported_protocols() -> RustString {
-    // unwrapping wthout handling the error is safe as the string content is
-    // controlled and is simply an empty string
+pub extern "C" fn protover_get_supported_protocols() -> RustString {
+    // Not handling errors when unwrapping as the content is controlled
+    // and is an empty string
     let empty = RustString::from(CString::new("").unwrap());
 
     let supported = get_supported_protocols();
@@ -99,7 +115,7 @@ pub unsafe extern "C" fn protover_get_supported_protocols() -> RustString {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_compute_vote(
+pub extern "C" fn protover_compute_vote(
     list: *const Stringlist,
     threshold: c_int,
 ) -> RustString {
@@ -111,7 +127,13 @@ pub unsafe extern "C" fn protover_compute_vote(
         return empty;
     }
 
-    let data = (*list).get_list();
+    // Dereference of raw pointer requires an unsafe block. We check above to
+    // ensure this pointer is not null
+    let data: Vec<String>;
+    unsafe {
+        data = (*list).get_list();
+    }
+
     let vote = compute_vote(data, threshold);
 
     let c_vote = match CString::new(vote) {
@@ -123,32 +145,39 @@ pub unsafe extern "C" fn protover_compute_vote(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_is_supported_here(
-    pt: uint32_t,
-    vers: uint32_t,
+pub extern "C" fn protover_is_supported_here(
+    c_protocol: uint32_t,
+    version: uint32_t,
 ) -> c_int {
-    let proto = match translate_to_rust(pt) {
+    let protocol = match translate_to_rust(c_protocol) {
         Ok(n) => n,
         Err(_) => return 0,
     };
 
-    let is_supported = is_supported_here(proto, vers);
+    let is_supported = is_supported_here(protocol, version);
 
     return if is_supported { 1 } else { 0 };
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn protover_compute_for_old_tor(
-    vers: *const c_char,
+pub extern "C" fn protover_compute_for_old_tor(
+    version: *const c_char,
 ) -> RustString {
-    // Not handling errors in unwrapping as this is an empty string
+    // Not handling errors when unwrapping as the content is controlled
+    // and is an empty string
     let empty = RustString::from(CString::new("").unwrap());
 
-    if vers.is_null() {
+    if version.is_null() {
         return empty;
     }
 
-    let c_str = CStr::from_ptr(vers);
+    // Require an unsafe block as we need to translate a c version string into
+    // a rust string. We check if the pointer to this string is null above.
+    let c_str: &CStr;
+    unsafe {
+        c_str = CStr::from_ptr(version);
+    }
+
     let r_str = match c_str.to_str() {
         Ok(n) => n,
         Err(_) => return empty,
