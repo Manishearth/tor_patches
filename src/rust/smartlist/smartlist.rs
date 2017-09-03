@@ -6,9 +6,8 @@ use std::ffi::CStr;
 /// generic type, which has a capacity and a number used. Each Smartlist
 /// defines how to extract the list of values from the underlying C structure
 /// Implementations are required to have a C representation
-/// TODO: generic vector type return value
-pub trait Smartlist {
-    unsafe fn get_list(&self) -> Vec<String>;
+pub trait Smartlist<T> {
+    unsafe fn get_list(&self) -> Vec<T>;
 }
 #[repr(C)]
 pub struct Stringlist {
@@ -17,9 +16,8 @@ pub struct Stringlist {
     pub capacity: u8,
 }
 
-impl Smartlist for Stringlist {
+impl Smartlist<String> for Stringlist {
     unsafe fn get_list(&self) -> Vec<String> {
-        // TODO return type
         let mut v: Vec<String> = Vec::new();
         let elems = slice::from_raw_parts(self.list, self.num_used as usize);
 
