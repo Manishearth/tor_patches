@@ -13,6 +13,7 @@ use tor_util::RustString;
 /// Translate C enums to Rust Proto enums, using the integer value of the C
 /// enum to map to its associated Rust enum
 /// This is dependant on the associated C enum preserving ordering.
+/// Modify the C documentation to give warnings-  you must also re-order the rust
 fn translate_to_rust(c_proto: uint32_t) -> Result<Proto, &'static str> {
     match c_proto {
         0 => Ok(Proto::Link),
@@ -39,8 +40,8 @@ pub extern "C" fn protover_all_supported(
         return 1;
     }
 
-    // Require an unsafe block as we need to read the version from a c string.
-    // We check above to ensure the pointer to this string is not null.
+    // Require an unsafe block to read the version from a C string. The pointer
+    // is checked above to ensure it is not null.
     let c_str: &CStr;
     unsafe {
         c_str = CStr::from_ptr(c_relay_version);
@@ -51,20 +52,23 @@ pub extern "C" fn protover_all_supported(
         Err(_) => return 1,
     };
 
-    let (status, unsupported) = all_supported(relay_version);
+    let (all_are_supported, unsupported) = all_supported(relay_version);
 
-    if status == false {
-        let c_unsupported = match CString::new(unsupported) {
-            Ok(n) => n,
-            Err(_) => return 1,
-        };
-
-        unsafe {
-            *missing_out = c_unsupported.into_raw();
-        }
-        return 0;
+    if all_are_supported {
+        return 1;
     }
-    1
+
+    let c_unsupported = match CString::new(unsupported) {
+        Ok(n) => n,
+        Err(_) => return 1,
+    };
+
+    unsafe {
+        // TODO this needs to be a RustString
+        *missing_out = c_unsupported.into_raw();
+    }
+
+    0
 }
 
 #[no_mangle]
@@ -77,8 +81,8 @@ pub extern "C" fn protocol_list_supports_protocol(
         return 1;
     }
 
-    // Require an unsafe block as we need to read the protocol list from a c
-    // string. We check above to ensure the pointer to this string is not null.
+    // Require an unsafe block to read the version from a C string. The pointer
+    // is checked above to ensure it is not null.
     let c_str: &CStr;
     unsafe {
         c_str = CStr::from_ptr(c_protocol_list);
@@ -111,6 +115,7 @@ pub extern "C" fn protover_get_supported_protocols() -> RustString {
         Ok(n) => n,
         Err(_) => return empty,
     };
+
     RustString::from(c_supported)
 }
 
@@ -127,15 +132,14 @@ pub extern "C" fn protover_compute_vote(
         return empty;
     }
 
-    // Dereference of raw pointer requires an unsafe block. We check above to
-    // ensure this pointer is not null
+    // Dereference of raw pointer requires an unsafe block. The pointer is
+    // checked above to ensure it is not null.
     let data: Vec<String>;
     unsafe {
         data = (*list).get_list();
     }
 
     let vote = compute_vote(data, threshold);
-
     let c_vote = match CString::new(vote) {
         Ok(n) => n,
         Err(_) => return empty,
@@ -171,24 +175,24 @@ pub extern "C" fn protover_compute_for_old_tor(
         return empty;
     }
 
-    // Require an unsafe block as we need to translate a c version string into
-    // a rust string. We check if the pointer to this string is null above.
+    // Require an unsafe block to read the version from a C string. The pointer
+    // is checked above to ensure it is not null.
     let c_str: &CStr;
     unsafe {
         c_str = CStr::from_ptr(version);
     }
 
-    let r_str = match c_str.to_str() {
+    let version = match c_str.to_str() {
         Ok(n) => n,
         Err(_) => return empty,
     };
 
-    // compute for old tor can take a reference?
-    let supported = compute_for_old_tor(String::from(r_str));
+    let supported = compute_for_old_tor(&version);
 
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
         Err(_) => return empty,
     };
+
     RustString::from(c_supported)
 }

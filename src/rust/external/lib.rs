@@ -1,19 +1,14 @@
+//! Copyright (c) 2016-2017, The Tor Project, Inc. */
+//! See LICENSE for licensing information */
+
+//! Interface for external calls to tor C ABI
+//!
+//! The purpose of this module is to provide a clean interface for when Rust
+//! modules need to interact with functionality in tor C code rather than each
+//! module implementing this functionality repeatedly.
+
 extern crate libc;
 
-use self::libc::{c_char, c_int};
-use std::ffi::CString;
+mod external;
 
-extern {
-    fn tor_version_as_new_as(platform: *const c_char, cutoff: *const c_char) -> c_int;
-}
-
-pub fn c_tor_version_as_new_as(platform: &str, cutoff: &str) -> bool {
-    unsafe {
-        let c_platform = CString::new(platform).unwrap();
-        let c_cutoff = CString::new(cutoff).unwrap();
-
-        let res: c_int = tor_version_as_new_as(c_platform.as_ptr(), c_cutoff.as_ptr());
-        res == 1
-    }
-}
-
+pub use external::*;

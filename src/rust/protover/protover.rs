@@ -424,7 +424,7 @@ fn parse_protocols_from_string_with_no_validation<'a>(
 /// assert_eq!("Link=3", vote)
 /// ```
 pub fn compute_vote(
-    list_of_proto_strings: Vec<String>, // TODO this should be a list of string references
+    list_of_proto_strings: Vec<String>,
     threshold: i32,
 ) -> String {
     let empty = String::from("");
@@ -530,28 +530,28 @@ pub fn is_supported_here(proto: Proto, vers: u32) -> bool {
 
 /// Older versions of Tor cannot infer their own subprotocols
 /// Used to determine which subprotocols are supported by older Tor versions.
-pub fn compute_for_old_tor(version: String) -> String {
+pub fn compute_for_old_tor(version: &str) -> String {
     if c_tor_version_as_new_as(
-        &version,
+        version,
         FIRST_TOR_VERSION_TO_ADVERTISE_PROTOCOLS,
     )
     {
         return String::new();
     }
 
-    if c_tor_version_as_new_as(&version, "0.2.9.1-alpha") {
+    if c_tor_version_as_new_as(version, "0.2.9.1-alpha") {
         let ret = "Cons=1-2 Desc=1-2 DirCache=1 HSDir=1 HSIntro=3 HSRend=1-2 \
                    Link=1-4 LinkAuth=1 Microdesc=1-2 Relay=1-2";
         return String::from(ret);
     }
 
-    if c_tor_version_as_new_as(&version, "0.2.7.5") {
+    if c_tor_version_as_new_as(version, "0.2.7.5") {
         let ret = "Cons=1-2 Desc=1-2 DirCache=1 HSDir=1 HSIntro=3 HSRend=1 \
                    Link=1-4 LinkAuth=1 Microdesc=1-2 Relay=1-2";
         return String::from(ret);
     }
 
-    if c_tor_version_as_new_as(&version, "0.2.4.19") {
+    if c_tor_version_as_new_as(version, "0.2.4.19") {
         let ret = "Cons=1 Desc=1 DirCache=1 HSDir=1 HSIntro=3 HSRend=1 \
                    Link=1-4 LinkAuth=1 Microdesc=1 Relay=1-2";
         return String::from(ret);
@@ -623,16 +623,6 @@ mod test {
         assert_eq!(true, contains_only_supported_protocols("Cons=1,2"));
         assert_eq!(true, contains_only_supported_protocols("Cons=1-2"));
     }
-
-    //    TODO move to /tests
-    //    #[test]
-    //    fn test_all_supported() {
-    //        use super::all_supported;
-    //
-    //        assert_eq!((true, String::from("")), all_supported("Cons=1"));
-    //        assert_eq!((false, String::from("Wombat=9")),
-    //                   all_supported("Cons=1 Wombat=9"));
-    //    }
 
     #[test]
     fn test_find_range() {

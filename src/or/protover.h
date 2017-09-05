@@ -23,7 +23,15 @@
 /** The protover version number that signifies HSv3 intro point support */
 #define PROTOVER_HS_INTRO_V3 4
 
-/** List of recognized subprotocols. */
+/** List of recognized subprotocols.
+ *
+ * Note that this submodule has a Rust implementation. In order to properly
+ * translate C enums to Rust, we rely on the integer value of enums. This means
+ * that this enum structure is order dependant. If the order of this enum needs
+ * to be changed, be sure to update the corresponding Rust translation at
+ * /src/rust/protover/ffi.rs
+ *
+ */
 typedef enum protocol_type_t {
   PRT_LINK,
   PRT_LINKAUTH,

@@ -168,9 +168,7 @@ fn protover_string_supports_protocol_returns_false_for_single_unsupported() {
     assert_eq!(false, is_supported);
 }
 
-/// todo verify this behavior
 #[test]
-#[ignore]
 fn protover_all_supported_with_unexpected_characters() {
     let protocols = "Cons=*-%";
     let (is_supported, unsupported) = protover::all_supported(protocols);
