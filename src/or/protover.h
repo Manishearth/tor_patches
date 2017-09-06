@@ -79,13 +79,18 @@ typedef struct proto_entry_t {
 
 STATIC void proto_entry_free(proto_entry_t *entry);
 
-STATIC smartlist_t *parse_protocol_list(const char *s);
-STATIC char *encode_protocol_list(const smartlist_t *sl);
-STATIC void proto_entry_encode_into(smartlist_t *chunks, const proto_entry_t *entry);
-
 #ifndef HAVE_RUST
 STATIC int str_to_protocol_type(const char *s, protocol_type_t *pr_out);
 STATIC const char *protocol_type_to_str(protocol_type_t pr);
+#endif
+
+// Some functions are used as helpers for test_protover.c. Therefore, the below
+// should be defined in the context of running tests, or if compiled without
+// Rust support.
+#if defined(TOR_UNIT_TESTS) ||  !defined(HAVE_RUST)
+STATIC char *encode_protocol_list(const smartlist_t *sl);
+STATIC smartlist_t *parse_protocol_list(const char *s);
+STATIC void proto_entry_encode_into(smartlist_t *chunks, const proto_entry_t *entry);
 #endif
 
 #endif
