@@ -36,4 +36,3 @@ rust_welcome_string(void)
     char *s = tor_malloc_zero(1);
     return (rust_str_t)s;
 }
-

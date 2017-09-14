@@ -8,7 +8,6 @@ use std::ffi::CString;
 
 use protover::*;
 use smartlist::*;
-use tor_util::RustString;
 
 /// Translate C enums to Rust Proto enums, using the integer value of the C
 /// enum to map to its associated Rust enum
@@ -31,12 +30,12 @@ fn translate_to_rust(c_proto: uint32_t) -> Result<Proto, &'static str> {
 }
 
 #[no_mangle]
-pub extern "C" fn protover_all_supported(
+pub extern "C" fn rust_protover_all_supported(
     c_relay_version: *const c_char,
     missing_out: *mut *mut c_char,
 ) -> c_int {
 
-    if c_relay_version.is_null() || missing_out.is_null() {
+    if c_relay_version.is_null() {
         return 1;
     }
 
@@ -52,27 +51,23 @@ pub extern "C" fn protover_all_supported(
         Err(_) => return 1,
     };
 
-    let (all_are_supported, unsupported) = all_supported(relay_version);
+    let (is_supported, unsupported) = all_supported(relay_version);
 
-    if all_are_supported {
-        return 1;
+    if unsupported.len() > 0 {
+        let c_unsupported = match CString::new(unsupported) {
+            Ok(n) => n,
+            Err(_) => return 1,
+        };
+
+        let ptr = c_unsupported.into_raw();
+        unsafe { *missing_out = ptr };
     }
 
-    let c_unsupported = match CString::new(unsupported) {
-        Ok(n) => n,
-        Err(_) => return 1,
-    };
-
-    unsafe {
-        // TODO this needs to be a RustString
-        *missing_out = c_unsupported.into_raw();
-    }
-
-    0
+    return if is_supported { 1 } else { 0 };
 }
 
 #[no_mangle]
-pub extern "C" fn protocol_list_supports_protocol(
+pub extern "C" fn rust_protocol_list_supports_protocol(
     c_protocol_list: *const c_char,
     c_protocol: uint32_t,
     version: uint32_t,
@@ -105,31 +100,31 @@ pub extern "C" fn protocol_list_supports_protocol(
 }
 
 #[no_mangle]
-pub extern "C" fn protover_get_supported_protocols() -> RustString {
+pub extern "C" fn rust_protover_get_supported_protocols() -> *mut c_char {
     // Not handling errors when unwrapping as the content is controlled
     // and is an empty string
-    let empty = RustString::from(CString::new("").unwrap());
+    let empty = CString::new("").unwrap();
 
     let supported = get_supported_protocols();
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
-        Err(_) => return empty,
+        Err(_) => return empty.into_raw(),
     };
 
-    RustString::from(c_supported)
+    c_supported.into_raw()
 }
 
 #[no_mangle]
-pub extern "C" fn protover_compute_vote(
+pub extern "C" fn rust_protover_compute_vote(
     list: *const Stringlist,
     threshold: c_int,
-) -> RustString {
+) -> *mut c_char {
     // Not handling errors when unwrapping as the content is controlled
     // and is an empty string
-    let empty = RustString::from(CString::new("").unwrap());
+    let empty = CString::new("").unwrap();
 
     if list.is_null() {
-        return empty;
+        return empty.into_raw();
     }
 
     // Dereference of raw pointer requires an unsafe block. The pointer is
@@ -142,14 +137,14 @@ pub extern "C" fn protover_compute_vote(
     let vote = compute_vote(data, threshold);
     let c_vote = match CString::new(vote) {
         Ok(n) => n,
-        Err(_) => return empty,
+        Err(_) => return empty.into_raw(),
     };
 
-    RustString::from(c_vote)
+    c_vote.into_raw()
 }
 
 #[no_mangle]
-pub extern "C" fn protover_is_supported_here(
+pub extern "C" fn rust_protover_is_supported_here(
     c_protocol: uint32_t,
     version: uint32_t,
 ) -> c_int {
@@ -164,15 +159,15 @@ pub extern "C" fn protover_is_supported_here(
 }
 
 #[no_mangle]
-pub extern "C" fn protover_compute_for_old_tor(
+pub extern "C" fn rust_protover_compute_for_old_tor(
     version: *const c_char,
-) -> RustString {
+) -> *mut c_char {
     // Not handling errors when unwrapping as the content is controlled
     // and is an empty string
-    let empty = RustString::from(CString::new("").unwrap());
+    let empty = CString::new("").unwrap();
 
     if version.is_null() {
-        return empty;
+        return empty.into_raw();
     }
 
     // Require an unsafe block to read the version from a C string. The pointer
@@ -184,15 +179,15 @@ pub extern "C" fn protover_compute_for_old_tor(
 
     let version = match c_str.to_str() {
         Ok(n) => n,
-        Err(_) => return empty,
+        Err(_) => return empty.into_raw(),
     };
 
     let supported = compute_for_old_tor(&version);
 
     let c_supported = match CString::new(supported) {
         Ok(n) => n,
-        Err(_) => return empty,
+        Err(_) => return empty.into_raw(),
     };
 
-    RustString::from(c_supported)
+    c_supported.into_raw()
 }

@@ -10,7 +10,6 @@
 #define TOR_PROTOVER_H
 
 #include "container.h"
-#include "compat_rust.h"
 
 /** The first version of Tor that included "proto" entries in its
  * descriptors.  Authorities should use this to decide whether to
@@ -25,15 +24,7 @@
 /** The protover version number that signifies HSv3 rendezvous point support */
 #define PROTOVER_HS_RENDEZVOUS_POINT_V3 2
 
-/** List of recognized subprotocols.
- *
- * Note that this submodule has a Rust implementation. In order to properly
- * translate C enums to Rust, we rely on the integer value of enums. This means
- * that this enum structure is order dependant. If the order of this enum needs
- * to be changed, be sure to update the corresponding Rust translation at
- * /src/rust/protover/ffi.rs
- *
- */
+/** List of recognized subprotocols. */
 typedef enum protocol_type_t {
   PRT_LINK,
   PRT_LINKAUTH,
@@ -49,11 +40,11 @@ typedef enum protocol_type_t {
 
 int protover_all_supported(const char *s, char **missing);
 int protover_is_supported_here(protocol_type_t pr, uint32_t ver);
-rust_str_t protover_get_supported_protocols(void);
+const char *protover_get_supported_protocols(void);
 
-rust_str_t protover_compute_vote(const smartlist_t *list_of_proto_strings,
+char *protover_compute_vote(const smartlist_t *list_of_proto_strings,
                             int threshold);
-rust_str_t protover_compute_for_old_tor(const char *version);
+const char *protover_compute_for_old_tor(const char *version);
 int protocol_list_supports_protocol(const char *list, protocol_type_t tp,
                                     uint32_t version);
 
@@ -81,13 +72,12 @@ typedef struct proto_entry_t {
 
 STATIC void proto_entry_free(proto_entry_t *entry);
 
-STATIC int str_to_protocol_type(const char *s, protocol_type_t *pr_out);
-
-STATIC const char *protocol_type_to_str(protocol_type_t pr);
-
-STATIC char *encode_protocol_list(const smartlist_t *sl);
+#if !defined(HAVE_RUST) || defined(TOR_UNIT_TESTS)
 STATIC smartlist_t *parse_protocol_list(const char *s);
-STATIC void proto_entry_encode_into(smartlist_t *chunks, const proto_entry_t *entry);
+STATIC int str_to_protocol_type(const char *s, protocol_type_t *pr_out);
+STATIC char *encode_protocol_list(const smartlist_t *sl);
+STATIC const char *protocol_type_to_str(protocol_type_t pr);
+#endif
 
 #endif /* defined(PROTOVER_PRIVATE) */
 

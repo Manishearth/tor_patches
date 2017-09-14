@@ -20,7 +20,6 @@
 //! protocols to develop independently, without having to claim compatibility
 //! with specific versions of Tor.
 
-extern crate tor_util;
 extern crate libc;
 extern crate smartlist;
 extern crate external;

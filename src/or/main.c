@@ -3117,6 +3117,7 @@ tor_init(int argc, char *argv[])
     if (strlen(s) > 0) {
       log_notice(LD_GENERAL, "%s", s);
     }
+
     rust_str_free(rust_str);
   }
 
