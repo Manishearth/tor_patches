@@ -204,7 +204,12 @@ fn contains_only_supported_protocols(str_v: &str) -> bool {
             Err(_) => return false,
         };
 
-    vers.retain(|x| !currently_supported[&name].contains(x));
+    let supported_versions = match currently_supported.get(&name) {
+        Some(n) => n,
+        None => return false,
+    };
+
+    vers.retain(|x| !supported_versions.contains(x));
     vers.is_empty()
 }
 
@@ -284,7 +289,12 @@ pub fn protover_string_supports_protocol(
         Err(_) => return false,
     }
 
-    supported[&proto].contains(&vers)
+    let supported_versions = match supported.get(&proto) {
+        Some(n) => n,
+        None => return false,
+    };
+
+    supported_versions.contains(&vers)
 }
 
 /// Takes a protocol range and expands it to all numbers within that range.
@@ -499,6 +509,7 @@ fn write_vote_to_string(vote: &HashMap<String, String>) -> String {
 
     let mut output = Vec::new();
     for key in keys {
+        // TODO error in indexing here?
         output.push(format!("{}={}", key, vote[key]));
     }
     output.join(" ")
@@ -525,7 +536,12 @@ pub fn is_supported_here(proto: Proto, vers: u32) -> bool {
         Err(_) => return false,
     }
 
-    currently_supported[&proto].contains(&vers)
+    let supported_versions = match currently_supported.get(&proto) {
+        Some(n) => n,
+        None => return false,
+    };
+
+    supported_versions.contains(&vers)
 }
 
 /// Older versions of Tor cannot infer their own subprotocols

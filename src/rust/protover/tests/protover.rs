@@ -169,6 +169,17 @@ fn protover_string_supports_protocol_returns_false_for_single_unsupported() {
 }
 
 #[test]
+fn protover_string_supports_protocol_returns_false_when_protocol_name_is_not_in_map(){
+    let protocols = "Link=3-4";
+    let is_supported = protover::protover_string_supports_protocol(
+        protocols,
+        protover::Proto::Cons,
+        2,
+    );
+    assert_eq!(false, is_supported);
+}
+
+#[test]
 fn protover_all_supported_with_unexpected_characters() {
     let protocols = "Cons=*-%";
     let (is_supported, unsupported) = protover::all_supported(protocols);
