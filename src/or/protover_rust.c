@@ -130,7 +130,7 @@ protover_all_supported(const char *s, char **missing_out)
   char *missing_out_copy = NULL;
   int is_supported  = rust_protover_all_supported(s, &missing_out_copy);
 
-  if (missing_out_copy != NULL) {
+  if (!is_supported) {
     move_rust_str_to_c_and_free(missing_out_copy, missing_out);
   }
 
