@@ -28,40 +28,22 @@
 
 #include "or.h"
 #include "protover.h"
+#include "rust_types.h"
 
 #ifdef HAVE_RUST
 
-// This type is used to clearly mark strings that have been allocated in Rust,
-// and therefore strictly need to use the free_rust_str method to free.
-typedef char * rust_str;
-
 int rust_protover_all_supported(const char *s, char **missing);
-rust_str rust_protover_compute_for_old_tor(const char *version);
-rust_str rust_protover_compute_vote(const smartlist_t *proto_votes, int threshold);
-rust_str rust_protover_get_supported_protocols(void);
+rust_str_ref_t rust_protover_compute_for_old_tor(const char *version);
+rust_str_ref_t rust_protover_compute_vote(const smartlist_t *proto_votes, int threshold);
+rust_str_ref_t rust_protover_get_supported_protocols(void);
 int rust_protocol_list_supports_protocol(const char *list, protocol_type_t tp, uint32_t version);
 int rust_protover_is_supported_here(protocol_type_t pr, uint32_t ver);
-void move_rust_str_to_c_and_free(char *src, char **dest);
-void free_rust_str(char *ret);
 
-/* Because Rust strings can only be freed from Rust, we first copy the string's
- * contents to a c pointer, and then free the Rust string.
- * TODO: This should go into a helper file in /src/common
- */
-void move_rust_str_to_c_and_free(char *src, char **dest) {
-  if (!src) {
-    return;
-  }
-
-  if (!dest) {
-    free_rust_str(src);
-    return;
-  }
-
-  *dest = tor_strdup(src);
-  free_rust_str(src);
-}
-
+/**
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_protover_is_supported_here in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
+ **/
 int
 protover_is_supported_here(protocol_type_t pr, uint32_t ver)
 {
@@ -69,21 +51,26 @@ protover_is_supported_here(protocol_type_t pr, uint32_t ver)
 }
 
 /**
- * Return true iff "list" encodes a protocol list that includes support for
- * the indicated protocol and version.
- */
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_protover_list_supports_protocol in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
+ **/
 int
 protocol_list_supports_protocol(const char *list, protocol_type_t tp,
                                 uint32_t version)
 {
   return rust_protocol_list_supports_protocol(list, tp, version);
 }
-/** Return the canonical string containing the list of protocols
- * that we support. */
+
+/**
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_protover_get_supported_protocols in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
+ **/
 const char *
 protover_get_supported_protocols(void)
 {
-  rust_str rust_protocols = rust_protover_get_supported_protocols();
+  rust_str_ref_t rust_protocols = rust_protover_get_supported_protocols();
 
   char *protocols = NULL;
   if (rust_protocols != NULL) {
@@ -93,21 +80,15 @@ protover_get_supported_protocols(void)
 }
 
 /**
- * Protocol voting implementation.
- *
- * Given a list of strings describing protocol versions, return a newly
- * allocated string encoding all of the protocols that are listed by at
- * least <b>threshold</b> of the inputs.
- *
- * The string is minimal and sorted according to the rules of
- * contract_protocol_list above.
- */
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_protover_compute_vote in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
+ **/
 char *
 protover_compute_vote(const smartlist_t *list_of_proto_strings,
                       int threshold)
 {
-  // copy data from rust macro
-  rust_str rust_protocols = rust_protover_compute_vote(list_of_proto_strings, threshold);
+  rust_str_ref_t rust_protocols = rust_protover_compute_vote(list_of_proto_strings, threshold);
 
   char *protocols = NULL;
   if (rust_protocols != NULL) {
@@ -116,18 +97,15 @@ protover_compute_vote(const smartlist_t *list_of_proto_strings,
   return protocols;
 }
 
-/** Return true if every protocol version described in the string <b>s</b> is
- * one that we support, and false otherwise.  If <b>missing_out</b> is
- * provided, set it to the list of protocols we do not support.
- *
- * NOTE: This is quadratic, but we don't do it much: only a few times per
- * consensus. Checking signatures should be way more expensive than this
- * ever would be.
+/**
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_protover_all_supported in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
  **/
 int
 protover_all_supported(const char *s, char **missing_out)
 {
-  char *missing_out_copy = NULL;
+  rust_str_ref_t missing_out_copy = NULL;
   int is_supported  = rust_protover_all_supported(s, &missing_out_copy);
 
   if (!is_supported) {
@@ -137,16 +115,15 @@ protover_all_supported(const char *s, char **missing_out)
   return is_supported;
 }
 
-/** Return a string describing the protocols supported by tor version
- * <b>version</b>, or an empty string if we cannot tell.
- *
- * Note that this is only used to infer protocols for Tor versions that
- * can't declare their own.
+/**
+ * This function is a wrapper for the Rust protover module, found at
+ * rust_compute_for_old_tor in /src/rust/protover
+ * Defined only when HAVE_RUST is defined.
  **/
 const char *
 protover_compute_for_old_tor(const char *version)
 {
-  rust_str rust_protocols = rust_protover_compute_for_old_tor(version);
+  rust_str_ref_t rust_protocols = rust_protover_compute_for_old_tor(version);
 
   char *protocols = NULL;
   if (rust_protocols != NULL) {

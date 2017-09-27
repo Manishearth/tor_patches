@@ -82,6 +82,7 @@
 #include "tor_queue.h"
 #include "util_format.h"
 #include "hs_circuitmap.h"
+#include "rust_types.h"
 
 /* These signals are defined to help handle_control_signal work.
  */

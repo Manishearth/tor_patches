@@ -50,6 +50,8 @@ impl fmt::Display for Proto {
     }
 }
 
+/// Translates a string representation of a protocol into a Proto type.
+/// Error if the string is an unrecognized protocol name.
 impl FromStr for Proto {
     type Err = &'static str;
 
@@ -70,10 +72,19 @@ impl FromStr for Proto {
     }
 }
 
+/// Get the string representation of current supported protocols
+///
+/// # Returns
+///
+/// A `String` whose value is the existing protocols supported by tor.
+/// Returned data is in the format as follows:
+///
+/// "HSDir=1-1 LinkAuth=1"
 pub fn get_supported_protocols() -> String {
     SUPPORTED_PROTOCOLS.join(" ")
 }
 
+/// Translates a protocol list in string vector format into a HashMap
 fn parse_protocols(
     protocols: &[&str],
 ) -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
@@ -86,6 +97,7 @@ fn parse_protocols(
     Ok(parsed)
 }
 
+/// Translates a string representation of a protocol list to a HashMap
 fn parse_protocols_from_string<'a>(
     protocol_string: &'a str,
 ) -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
@@ -97,6 +109,14 @@ fn parse_protocols_from_string<'a>(
 
 /// Translates supported tor versions from  a string into a hashmap, which is
 /// useful when looking up a specific subprotocol.
+///
+/// # Returns
+///
+/// A `Result` whose `Ok` value is a `HashMap<Proto, <u32>>` holding all
+/// protocols and versions currently supported by tor.
+///
+/// The returned `Result`'s `Err` value is an `&'static str` with a description
+/// of the error.
 fn tor_supported() -> Result<HashMap<Proto, HashSet<u32>>, &'static str> {
     parse_protocols(&SUPPORTED_PROTOCOLS)
 }
@@ -155,8 +175,8 @@ fn get_versions(version_string: &str) -> Result<HashSet<u32>, &'static str> {
 ///
 /// # Inputs
 ///
-/// * A `subprotocol` string, comprised of a keyword, an "=" sign, and one or
-///   more version numbers.
+/// * A `protocol_entry` string, comprised of a keyword, an "=" sign, and one
+/// or more version numbers.
 ///
 /// # Returns
 ///
@@ -165,9 +185,9 @@ fn get_versions(version_string: &str) -> Result<HashSet<u32>, &'static str> {
 /// element is a(n unordered) set of unique version numbers which are supported.
 /// Otherwise, the `Err` value of this `Result` is a description of the error
 fn get_proto_and_vers<'a>(
-    str_p: &'a str,
+    protocol_entry: &'a str,
 ) -> Result<(Proto, HashSet<u32>), &'static str> {
-    let mut parts: SplitN<'a, &str> = str_p.splitn(2, "=");
+    let mut parts: SplitN<'a, &str> = protocol_entry.splitn(2, "=");
 
     let proto: &str = match parts.next() {
         Some(n) => n,
@@ -185,15 +205,21 @@ fn get_proto_and_vers<'a>(
     Ok((proto_name, versions))
 }
 
-/// Takes a single subprotocol entry as a string, parses it into subprotocol
-/// and version parts, and then checks whether any of those versions are
-/// unsupported.
+/// Parses a single subprotocol entry string into subprotocol and version
+/// parts, and then checks whether any of those versions are unsupported.
+///
+/// # Inputs
+///
+/// Accepted data is in the string format as follows:
+///
+/// "HSDir=1-1"
 ///
 /// # Returns
 ///
-/// Returns `true` if there are versions supported by tor which we do not
-fn contains_only_supported_protocols(str_v: &str) -> bool {
-    let (name, mut vers) = match get_proto_and_vers(str_v) {
+/// Returns `true` if the protocol entry is well-formatted and only contains
+/// versions that are also supported in tor. Otherwise, returns false
+fn contains_only_supported_protocols(proto_entry: &str) -> bool {
+    let (name, mut vers) = match get_proto_and_vers(proto_entry) {
         Ok(n) => n,
         Err(_) => return false,
     };
@@ -213,24 +239,6 @@ fn contains_only_supported_protocols(str_v: &str) -> bool {
     vers.is_empty()
 }
 
-/// Return true if every protocol version is one that we support
-/// Otherwise, return false
-/// Optionally, return parameters which the client supports but which we do not
-/// Accepted data is in the string format as follows:
-/// "HSDir=1-1 LinkAuth=1-2"
-///
-/// # Examples
-/// ```
-/// use protover::*;
-///
-/// let (is_supported, unsupported)  = all_supported("Link=1");
-/// assert_eq!(true, is_supported);
-///
-/// let (is_supported, unsupported)  = all_supported("Link=5-6");
-/// assert_eq!(false, is_supported);
-/// assert_eq!("Link=5-6", unsupported);
-/// ```
-
 /// Determine if we support every protocol a client supports, and if not,
 /// determine which protocols we do not have support for.
 ///
@@ -238,9 +246,8 @@ fn contains_only_supported_protocols(str_v: &str) -> bool {
 ///
 /// Accepted data is in the string format as follows:
 ///
-/// ```ignore
 /// "HSDir=1-1 LinkAuth=1-2"
-/// ```
+///
 /// # Returns
 ///
 /// Return `true` if every protocol version is one that we support.
@@ -270,12 +277,22 @@ pub fn all_supported(protocols: &str) -> (bool, String) {
 /// indicated protocol and version.
 /// Otherwise, return false
 ///
+/// # Inputs
+///
+/// * `list`, a string representation of a list of protocol entries.
+/// * `proto`, a `Proto` to test support for
+/// * `vers`, a `u32` version which we will go on to determine whether the
+/// specified protocol supports.
+///
 /// # Examples
 /// ```
 /// use protover::*;
 ///
 /// let is_supported = protover_string_supports_protocol("Link=3-4 Cons=1", Proto::Cons,1);
-/// assert_eq!(true, is_supported)
+/// assert_eq!(true, is_supported);
+///
+/// let is_not_supported = protover_string_supports_protocol("Link=3-4 Cons=1", Proto::Cons,5);
+/// assert_eq!(false, is_not_supported)
 /// ```
 pub fn protover_string_supports_protocol(
     list: &str,
@@ -297,10 +314,24 @@ pub fn protover_string_supports_protocol(
     supported_versions.contains(&vers)
 }
 
-/// Takes a protocol range and expands it to all numbers within that range.
-/// For example, 1-3 expands to 1,2,3
-/// Will return an error if the version range does not contain both a valid
-/// lower and upper bound.
+/// Fully expand a version range. For example, 1-3 expands to 1,2,3
+///
+/// # Inputs
+///
+/// `range`, a string comprised of "[0-9,-]"
+///
+/// # Returns
+///
+/// A `Result` whose `Ok` value a vector of unsigned integers representing the
+/// expanded range of supported versions by a single protocol.
+/// Otherwise, the `Err` value of this `Result` is a description of the error
+///
+/// # Errors
+///
+/// This function will error if:
+///
+/// * the specified range is empty
+/// * the version range does not contain both a valid lower and upper bound.
 fn expand_version_range(range: &str) -> Result<Vec<u32>, &'static str> {
     if range.is_empty() {
         return Err("version string empty");
@@ -327,8 +358,19 @@ fn expand_version_range(range: &str) -> Result<Vec<u32>, &'static str> {
     Ok((lower...higher).collect())
 }
 
-/// Find range checks to see if there is a continuous range of integers,
-/// starting at the first in the list.
+/// Checks to see if there is a continuous range of integers, starting at the
+/// first in the list. Returns the last integer in the range if a range exists.
+///
+/// # Inputs
+///
+/// `list`, an ordered  vector of `u32` integers of "[0-9,-]" representing the
+/// supported versions for a single protocol.
+///
+/// # Returns
+///
+/// A `bool` indicating whether the list contains a range, starting at the
+/// first in the list, and an `u32` of the last integer in the range.
+///
 /// For example, if given vec![1, 2, 3, 5], find_range will return true,
 /// as there is a continuous range, and 3, which is the last number in the
 /// continuous range.
@@ -358,8 +400,19 @@ fn find_range(list: &Vec<u32>) -> (bool, u32) {
     (has_range, range_end)
 }
 
-fn contract_protocol_list<'a>(supported_hash: &'a HashSet<u32>) -> String {
-    let mut supported_clone = supported_hash.clone();
+/// Contracts a HashSet representation of supported versions into a string.
+///
+/// # Inputs
+///
+/// `supported_set`, a set of integers of "[0-9,-]" representing the
+/// supported versions for a single protocol.
+///
+/// # Returns
+///
+/// A `String` representation of this set in ascending order.
+///
+fn contract_protocol_list<'a>(supported_set: &'a HashSet<u32>) -> String {
+    let mut supported_clone = supported_set.clone();
     let mut supported: Vec<u32> = supported_clone.drain().collect();
     supported.sort();
 
@@ -384,6 +437,31 @@ fn contract_protocol_list<'a>(supported_hash: &'a HashSet<u32>) -> String {
     final_output.join(",")
 }
 
+/// Parses a protocol list without validating the protocol names
+///
+/// # Inputs
+///
+/// * `protocol_string`, a string comprised of keys and values, both which are
+/// strings. The keys are the protocol names while values are a string
+/// representation of the supported versions.
+///
+/// The input is _not_ expected to be a subset of the Proto types
+///
+/// # Returns
+///
+/// A `Result` whose `Ok` value is a `HashSet<u32>` holding all of the unique
+/// version numbers.
+///
+/// The returned `Result`'s `Err` value is an `&'static str` with a description
+/// of the error.
+///
+/// # Errors
+///
+/// This function will error if:
+///
+/// * The protocol string does not follow the "protocol_name=version_list"
+/// expected format
+/// * If the version string is malformed. See `get_versions`.
 fn parse_protocols_from_string_with_no_validation<'a>(
     protocol_string: &'a str,
 ) -> Result<HashMap<String, HashSet<u32>>, &'static str> {
@@ -498,11 +576,23 @@ pub fn compute_vote(
     write_vote_to_string(&final_output)
 }
 
-/// Takes a HashMap, where the keys are protocol names and values are a string
-/// representation of supported versions. Sorts the keys in alphabetical order
-/// and creates into the expected  subprotocol entry format.
-///
 /// Return a String comprised of protocol entries in alphabetical order
+///
+/// # Inputs
+///
+/// * `vote`, a `HashMap` comprised of keys and values, both which are strings.
+/// The keys are the protocol names while values are a string representation of
+/// the supported versions.
+///
+/// # Returns
+///
+/// A `String` whose value is series of pairs, comprising of the protocol name
+/// and versions that it supports. The string takes the following format:
+///
+/// "first_protocol_name=1,2-5, second_protocol_name=4,5"
+///
+/// Sorts the keys in alphabetical order and creates the expected subprotocol
+/// entry format.
 fn write_vote_to_string(vote: &HashMap<String, String>) -> String {
     let mut keys: Vec<&String> = vote.keys().collect();
     keys.sort();
@@ -546,6 +636,20 @@ pub fn is_supported_here(proto: Proto, vers: u32) -> bool {
 
 /// Older versions of Tor cannot infer their own subprotocols
 /// Used to determine which subprotocols are supported by older Tor versions.
+///
+/// # Inputs
+///
+/// * `version`, a string comprised of "[0-9,-]"
+///
+/// # Returns
+///
+/// A `String` whose value is series of pairs, comprising of the protocol name
+/// and versions that it supports. The string takes the following format:
+///
+/// "HSDir=1-1 LinkAuth=1"
+///
+/// This function returns the protocols that are supported by the version input,
+/// only for tor versions older than FIRST_TOR_VERSION_TO_ADVERTISE_PROTOCOLS.
 pub fn compute_for_old_tor(version: &str) -> String {
     if c_tor_version_as_new_as(
         version,

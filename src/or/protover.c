@@ -60,6 +60,10 @@ proto_entry_free(proto_entry_t *entry)
   tor_free(entry);
 }
 
+/**
+ * These functions are used by unit tests, so should only be defined if Rust is
+ * not defined, or for unit tests.
+ */
 #if !defined(HAVE_RUST) || defined(TOR_UNIT_TESTS)
 
 /**
@@ -255,10 +259,16 @@ encode_protocol_list(const smartlist_t *sl)
   return result;
 }
 
-#endif
+#endif /* !defined(HAVE_RUST) || defined(TOR_UNIT_TESTS) */
 
 
-// TODO Document
+/*
+ * The below functionality is also defined in Rust at /src/rust/protover, as
+ * part of an experiment to test Rust compatibility with tor and C. In the
+ * future, we will not maintain two separate versions of the same module, but
+ * in the short term, being able to selectively test Rust without requiring it
+ * is helpful.
+ */
 #ifndef HAVE_RUST
 
 static const smartlist_t *get_supported_protocol_list(void);
@@ -744,4 +754,4 @@ protover_compute_for_old_tor(const char *version)
   }
 }
 
-#endif
+#endif /* defined(HAVE_RUST) */
